@@ -684,7 +684,6 @@ function connectToPeers() {
 		if (!city && regionName && country){location = regionName + ", " + country }
 		if (city && !regionName && country){location = city + ", " + country }
 		if (!city && !regionName && country){location = country }
-		//let filter1 = regionName.regions.filter(obj => {return obj.shortCode === region})
         console.log("connected to ", peer.host+":"+peer.port, peer.version, peer.subversion, peer.bestHeight, peer.services, node_network, node_getutxo, node_bloom, node_witness, node_network_limited);
 		let connectedTime = (new Date()).getTime();
         connection = {
@@ -702,10 +701,10 @@ function connectToPeers() {
 		  location: location,
         };
 
-		saveConnection(connection, connectionId);
         if (!connectionSaved) {
           connectionSaved = true;
           data.active_host++;
+		  saveConnection(connection, connectionId);
         }
         /*db.put(connection_prefix+connectionId, connectionSuccess, function (err) {
           if (err) return console.log('Ooops!', err) // some kind of I/O error

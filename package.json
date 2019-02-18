@@ -1,6 +1,6 @@
 {
   "name": "kaaawww-crawler",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Ravencoin node crawler",
   "main": "run.js",
   "scripts": {
