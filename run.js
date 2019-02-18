@@ -700,10 +700,9 @@ function connectToPeers() {
 		  long: geo.ll[1],
 		  location: location,
         };
-
+		data.active_host++;
         if (!connectionSaved) {
           connectionSaved = true;
-          data.active_host++;
 		  saveConnection(connection, connectionId);
         }
         /*db.put(connection_prefix+connectionId, connectionSuccess, function (err) {
