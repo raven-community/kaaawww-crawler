@@ -3,6 +3,7 @@ const express = require('express');
 const tableify = require('tableify');
 const geoip = require('geoip-lite');
 const countries = require('i18n-iso-countries');
+const regions = require('country-region');
 const level = require('level');
 const maxmind = require('maxmind');
 const ravencore_lib = require('ravencore-lib');
@@ -650,14 +651,28 @@ function connectToPeers() {
         let node_network = (peer.services & 1) !== 0;
 		let geo = geoip.lookup(peer.host);
 		let city = geo.city ? geo.city : "N/A"
-		let region = geo.region ? geo.region : "N/A"
 		let country;
+		let regionName;
 		if (geo && geo.country) {
 			  country = countries.getName(geo.country, "en");
 			  if (!country) country = geo.country;
 			} else {
 			  country = "N/A";
 		}
+		let region = geo.region ? geo.region : "N/A"
+		if (country !== "N/A"){
+			if (country == 'United States of America') {
+				country = "United States" 
+				}
+			regionName = regions(country);
+			regionName = regionName.regions.filter(obj => {return obj.shortCode === geo.region});
+		}
+		if (regionName[0]){
+			regionName = regionName[0].name ? regionName[0].name : "N/A"
+		} else {
+			regionName = "N/A"
+		}
+		//let filter1 = regionName.regions.filter(obj => {return obj.shortCode === region})
         console.log("connected to ", peer.host+":"+peer.port, peer.version, peer.subversion, peer.bestHeight, peer.services, node_network, node_getutxo, node_bloom, node_witness, node_network_limited);
         let connectedTime = (new Date()).getTime();
         connection = {
@@ -673,8 +688,8 @@ function connectToPeers() {
 		  lat: geo.ll[0],
 		  long: geo.ll[1],
 		  city: city,
-		  region: region,
-		  country: geo.country,
+		  region: regionName,
+		  country: country,
         };
 
         if (!connectionSaved) {
