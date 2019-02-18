@@ -116,9 +116,9 @@ app.get('/node_count', function (req, res) {
 	  let hostSuccess = Object.keys(host2lastconnection).filter(host => host2lastconnection[host].success).length;
 	  let hostFailed = hostAll - hostSuccess;
     res.send(
+	  "All: "+hostAll+"<br>"+
       "Success: "+hostSuccess+"<br>"+
-	  "Failed: "+hostFailed+"<br>"+
-	  "All: "+hostAll+"<br>"
+	  "Failed: "+hostFailed+"<br>"
     );
   });
 });
@@ -145,9 +145,7 @@ app.get('/node_list', function (req, res) {
 		bestHeight: obj.bestHeight,
 		lat: obj.lat,
 		long: obj.long,
-		city: obj.city,
-		region: obj.region,
-		country: obj.country
+		location: obj.location
 	}));
 	hostCount = hostList.length;
 	hostList = hostList.sort(function(a, b){return b.version - a.version});
@@ -195,10 +193,10 @@ function formatPercentage(val) {
   return (val*100).toFixed(2)+"%";
 }
 
-let full_nodes_result = {};
-
 let data = {
   epoch_hour: 0,
+  active_host: 0,
+  inactive_host: 0,
   hour2first_and_last_connection_time: {},
   hostdata: {
     host2active: {},
@@ -218,7 +216,6 @@ function add_connection2data(connection) {
   let hours_ago = data.epoch_hour-connect_hour;
   if (hours_ago < 0) return;
   let host = connection.host+":"+connection.port;
-
   if (data.hour2first_and_last_connection_time[hours_ago] === undefined) {
     data.hour2first_and_last_connection_time[hours_ago] = {min: connectTime, max: connectTime};
   } else {
@@ -650,31 +647,45 @@ function connectToPeers() {
         let node_getutxo = (peer.services & 2) !== 0;
         let node_network = (peer.services & 1) !== 0;
 		let geo = geoip.lookup(peer.host);
-		let city = geo.city ? geo.city : "N/A"
+		let city;
+		if (geo) {
+			city = geo.city ? geo.city : undefined
+		} else {
+			city = undefined
+		}
 		let country;
 		let regionName;
 		if (geo && geo.country) {
 			  country = countries.getName(geo.country, "en");
 			  if (!country) country = geo.country;
 			} else {
-			  country = "N/A";
+			  country = undefined;
 		}
-		let region = geo.region ? geo.region : "N/A"
+		let region = geo.region ? geo.region : undefined
 		if (country !== "N/A"){
 			if (country == 'United States of America') {
 				country = "United States" 
 				}
 			regionName = regions(country);
+			if (regionName) {
 			regionName = regionName.regions.filter(obj => {return obj.shortCode === geo.region});
+			} else {
+				regionName = [];
+			}
 		}
 		if (regionName[0]){
-			regionName = regionName[0].name ? regionName[0].name : "N/A"
+			regionName = regionName[0].name ? regionName[0].name : undefined
 		} else {
-			regionName = "N/A"
+			regionName = undefined
 		}
+		let location;
+		if (city && regionName && country){location = city + ", " + regionName + ", " + country }
+		if (!city && regionName && country){location = regionName + ", " + country }
+		if (city && !regionName && country){location = city + ", " + country }
+		if (!city && !regionName && country){location = country }
 		//let filter1 = regionName.regions.filter(obj => {return obj.shortCode === region})
         console.log("connected to ", peer.host+":"+peer.port, peer.version, peer.subversion, peer.bestHeight, peer.services, node_network, node_getutxo, node_bloom, node_witness, node_network_limited);
-        let connectedTime = (new Date()).getTime();
+		let connectedTime = (new Date()).getTime();
         connection = {
           host: peer.host,
           port: peer.port, 
@@ -687,15 +698,15 @@ function connectToPeers() {
           connectTime: connectTime,
 		  lat: geo.ll[0],
 		  long: geo.ll[1],
-		  city: city,
-		  region: regionName,
-		  country: country,
+		  location: location,
         };
 
-        if (!connectionSaved) {
-          connectionSaved = true;
+		data.active_host++;
+		
+        //if (!connectionSaved) {
+          //connectionSaved = true;
           saveConnection(connection, connectionId);
-        }
+        //}
         /*db.put(connection_prefix+connectionId, connectionSuccess, function (err) {
           if (err) return console.log('Ooops!', err) // some kind of I/O error
         });*/
@@ -714,6 +725,7 @@ function connectToPeers() {
         clearTimeout(handshakeTimeout);
         clearTimeout(connectTimeout);
         console.log("peer error", err);
+		data.inactive_host++;
         peer.disconnect();
       });
       
