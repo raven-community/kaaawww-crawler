@@ -196,7 +196,6 @@ function formatPercentage(val) {
 let data = {
   epoch_hour: 0,
   active_host: 0,
-  inactive_host: 0,
   hour2first_and_last_connection_time: {},
   hostdata: {
     host2active: {},
@@ -648,10 +647,13 @@ function connectToPeers() {
         let node_network = (peer.services & 1) !== 0;
 		let geo = geoip.lookup(peer.host);
 		let city;
+		let region;
 		if (geo) {
 			city = geo.city ? geo.city : undefined
+			region = geo.region ? geo.region : undefined
 		} else {
 			city = undefined
+			region = undefined
 		}
 		let country;
 		let regionName;
@@ -661,7 +663,6 @@ function connectToPeers() {
 			} else {
 			  country = undefined;
 		}
-		let region = geo.region ? geo.region : undefined
 		if (country !== "N/A"){
 			if (country == 'United States of America') {
 				country = "United States" 
@@ -701,12 +702,11 @@ function connectToPeers() {
 		  location: location,
         };
 
-		data.active_host++;
-		
-        //if (!connectionSaved) {
-          //connectionSaved = true;
-          saveConnection(connection, connectionId);
-        //}
+		saveConnection(connection, connectionId);
+        if (!connectionSaved) {
+          connectionSaved = true;
+          data.active_host++;
+        }
         /*db.put(connection_prefix+connectionId, connectionSuccess, function (err) {
           if (err) return console.log('Ooops!', err) // some kind of I/O error
         });*/
@@ -725,7 +725,6 @@ function connectToPeers() {
         clearTimeout(handshakeTimeout);
         clearTimeout(connectTimeout);
         console.log("peer error", err);
-		data.inactive_host++;
         peer.disconnect();
       });
       
