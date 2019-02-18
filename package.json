@@ -1,0 +1,34 @@
+{
+  "name": "kaaawww-crawler",
+  "version": "1.0.0",
+  "description": "Ravencoin node crawler",
+  "main": "run.js",
+  "scripts": {
+    "start": "node ./run.js -network=rvn -port=3003"
+  },
+  "bin": {
+    "kaaawww-crawler": "./bin/kaaawww-crawler"
+  },
+  "dependencies": {
+    "bitset": "^5.0.3",
+    "express": "^4.16.4",
+    "geoip-lite": "^1.3.6",
+    "i18n-iso-countries": "^3.7.5",
+    "level": "^4.0.0",
+    "maxmind": "^2.7.0",
+    "node-buffers": "^0.1.1",
+    "ravencore-lib": "^1.0.3",
+    "ravencore-p2p": "^1.0.0",
+    "tableify": "^1.1.0"
+  },
+  "devDependencies": {},
+  "author": "Antti Kaikkonen",
+  "contributors": {
+    "name": "MSFTserver"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/raven-community/kaaawww-crawler"
+  },
+  "license": "MIT"
+}
