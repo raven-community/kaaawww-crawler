@@ -164,7 +164,13 @@ app.get('/connections/:host_ip.csv', function(req, res) {
   connectionsByHost(ip)
   .on('data', function(connection) {
     //if (connection.host !== ip) return;
-    let columns = [connection.connectTime, 
+	let readableDate = new Date(connection.connectTime);
+	readableDate = (readableDate.getMonth() + 1) +
+	"/" + readableDate.getDate() +
+	"/" + readableDate.getFullYear() +
+	" " + readableDate.getHours() + 
+	":" + readableDate.getMinutes();
+    let columns = [readableDate, 
       connection.host,
       connection.port];
     if (connection.success !== undefined) {
@@ -187,6 +193,135 @@ app.get('/debug', function(req, res) {
   res.send(data);
 });
 
+app.get('/map', function(req, res) {
+  let hours = req.query.hours;
+  if (!isFinite(hours) || hours > 10) hours = 10;
+  let host2lastconnection = {};
+  let host2active = {};
+  recentConnections(1000*60*60*hours)
+  .on('data', function(connection) {
+    let key = connection.host+":"+connection.port;
+    if (host2lastconnection[key] === undefined || connection.connectTime > host2lastconnection[key].connectTime)  {
+      host2lastconnection[key] = connection;
+    }
+  })
+  .on('close', function() {
+	let hostList = Object.values(host2lastconnection);
+	hostList = hostList.filter(obj => {return obj.success === true});
+	hostCount = hostList.length;
+	hostList = hostList.map(obj => ({ 
+		host: obj.host,
+		port: obj.port,
+		version: obj.version,
+		bestHeight: obj.bestHeight,
+		lat: obj.lat,
+		long: obj.long,
+		location: obj.location,
+		country: obj.country,
+	}));
+	app.use("/node_modules", express.static(__dirname + '/node_modules'));
+	let peerInfo = [];
+	let Highlight = [];
+	for (i = 0; i < hostList.length; i++) {
+		let escapeLocation = hostList[i].location;
+		if (hostList[i].location){escapeLocation = hostList[i].location.replace(/'/g, "\\\'");}
+		peerInfo.push(
+			"{host: '"+hostList[i].host+"',"+
+			"port: "+hostList[i].port+","+
+			"version: "+hostList[i].version+","+
+			"bestHeight: "+hostList[i].bestHeight+","+
+			"location: '"+escapeLocation+"',"+
+			"latitude: "+hostList[i].lat+","+
+			"longitude: "+hostList[i].long+","+
+			"radius: 3, fillKey: 'peer'}"
+		);
+		if (hostList[i].country){Highlight.push(hostList[i].country);}
+	};
+	let count = {};
+    Highlight.forEach(function(i) { count[i] = (count[i]||0) + 1;});
+	Highlight = [...new Set(Highlight)];
+	let optionsData = [];
+	for (j = 0; j < Highlight.length; j++ ){
+		let countryName = Highlight[j]
+		if (countryName == "United States") {countryName = "United States of America"}
+		countryCode = countries.getAlpha3Code(countryName,'en');
+		if (countryName == "United States of America") {countryName = "United States"}
+		optionsData.push(countryCode+": { fillKey: 'active', count: "+count[countryName]+" }");		
+	}
+	let popupBubbles = "map.bubbles(["+
+	  peerInfo +
+	  "], {"+
+	  "popupTemplate: function(geo, data) {"+
+	    "return \"<div class='hoverinfo'>"+
+		"host: \" + data.host + \":\" + data.port + \"<br>"+
+		"version: \" + data.version + \"<br>"+
+		"height: \" + data.bestHeight + \"<br>"+
+		"location: \" + data.location + \"<br>"+
+		"<strong>click to download nodes info!</strong>\""+
+	  "}"+
+	  "})";
+	let popupMain = "popupTemplate: function(geography, data) {"+
+          "return \"<div class='hoverinfo'><strong>\" + geography.properties.name + \" (\"+data.count+\")</strong></div>\";"+
+        "}";
+	let bubblesConfig = "options.bubblesConfig = {"+
+        "borderWidth: 0,"+
+        "borderOpacity: 0,"+
+        "borderColor: '#FFFFFF',"+
+        "fillOpacity: 1,"+
+        "animate: true,"+
+        "highlightOnHover: true,"+
+        "highlightFillColor: '#FC8D59',"+
+        "highlightBorderColor: 'rgba(250, 15, 160, 0.2)',"+
+        "highlightBorderWidth: 2,"+
+        "highlightBorderOpacity: 1,"+
+        "highlightFillOpacity: 0.85"+
+    "};";
+	let newMap = "<head>"+
+	  "<script src='//cdnjs.cloudflare.com/ajax/libs/d3/3.5.3/d3.min.js'></script>"+
+	  "<script src='//cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js'></script>"+
+	  "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js'></script>"+
+	  "<script src='node_modules/datamaps/dist/datamaps.world.hires.min.js'></script>"+
+	  "</head>"+
+	  "<body style='background: #000; overflow: hidden; margin:10 auto;'>"+
+	  "<div id='container'></div>"+
+	  "<script>"+
+	  "let options = {};"+
+	  "options.element = document.getElementById('container');" +
+	  "options.scope = 'world';" +
+	  "options.geographyConfig = {"+
+	  "popupOnHover: true,"+
+	  "highlightOnHover: false,"+
+	  "borderWidth: 1,"+
+      "borderOpacity: 1,"+
+      "borderColor: '#000',"+
+	  popupMain +
+	  "};"+
+	  "options.done = function(datamap) {"+
+            "$(datamap.svg[0][0]).on('click', '.bubbles', function(e) {"+
+			    "let bubbleInfo = JSON.parse(e.target.dataset.info);"+
+                "open('http://'+window.location.host+'/connections/'+bubbleInfo.host+'.csv');"+
+            "});"+
+        "};"+
+	  "options.geographyConfig.highlightFillColor = '#59fc8d';"+
+	  "options.responsive = true;"+
+	  "options.projection = 'equirectangular';"+
+	  'options.fills = {'+
+	    'defaultFill: "#3c3c3c",'+
+	    'peer: "#ffffff",'+
+		'active: "#696969"'+
+	  '};'+
+	  bubblesConfig +
+	  'options.data = {'+
+      optionsData +
+	  '};'+
+	  "var map = new Datamap(options);"+
+	  "window.addEventListener('resize', function(event){map.resize();});"+
+	  popupBubbles+
+	  "</script>"+
+	  "</body>";
+	res.send(newMap);
+	});
+});
 
 function formatPercentage(val) {
   if (isNaN(val)) val = 0;
@@ -646,38 +781,35 @@ function connectToPeers() {
         let node_getutxo = (peer.services & 2) !== 0;
         let node_network = (peer.services & 1) !== 0;
 		let geo = geoip.lookup(peer.host);
-		let city;
-		let region;
+		let city, region, country, regionName, lat, long;
 		if (geo) {
 			city = geo.city ? geo.city : undefined
 			region = geo.region ? geo.region : undefined
+			country = countries.getName(geo.country, "en") ? countries.getName(geo.country, "en") : undefined
+			lat = geo.ll[0];
+			long = geo.ll[1];
 		} else {
 			city = undefined
 			region = undefined
+			country = undefined
+			lat = undefined
+			long = undefined
 		}
-		let country;
-		let regionName;
-		if (geo && geo.country) {
-			  country = countries.getName(geo.country, "en");
-			  if (!country) country = geo.country;
-			} else {
-			  country = undefined;
-		}
-		if (country !== "N/A"){
+		if (country){
 			if (country == 'United States of America') {
 				country = "United States" 
 				}
 			regionName = regions(country);
 			if (regionName) {
-			regionName = regionName.regions.filter(obj => {return obj.shortCode === geo.region});
+				regionName = regionName.regions.filter(obj => {return obj.shortCode === geo.region})
+				if (regionName[0]) {
+					regionName = regionName[0].name ? regionName[0].name : undefined
+				} else {
+				    regionName = undefined
+				}
 			} else {
-				regionName = [];
+				regionName = undefined
 			}
-		}
-		if (regionName[0]){
-			regionName = regionName[0].name ? regionName[0].name : undefined
-		} else {
-			regionName = undefined
 		}
 		let location;
 		if (city && regionName && country){location = city + ", " + regionName + ", " + country }
@@ -696,13 +828,14 @@ function connectToPeers() {
           success:true, 
           connectedTime: connectedTime, 
           connectTime: connectTime,
-		  lat: geo.ll[0],
-		  long: geo.ll[1],
+		  lat: lat,
+		  long: long,
 		  location: location,
+		  country: country,
         };
-		data.active_host++;
         if (!connectionSaved) {
           connectionSaved = true;
+		  data.active_host++;
 		  saveConnection(connection, connectionId);
         }
         /*db.put(connection_prefix+connectionId, connectionSuccess, function (err) {
