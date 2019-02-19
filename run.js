@@ -15,8 +15,6 @@ var network_name = "rvn";
 let api_port = 3000;
 let cwd = process.cwd();
 
-const asnLookup = maxmind.openSync(cwd+'/GeoLite2-ASN.mmdb');
-
 const stay_connected_time = 1000*60*5;//how long to wait for addr messages.
 let max_concurrent_connections = 500;
 let max_failed_connections_per_minute = 1000;
