@@ -1,4 +1,4 @@
-#Kaaawww-Crawler
+# Kaaawww-Crawler
 
 Ravencoin Network Crawler
 
@@ -12,8 +12,6 @@ Ravencoin Network Crawler
 
 npm install -g kaaawww-crawler
 
-Download [maxmind ASN database](https://geolite.maxmind.com/download/geoip/database/GeoLite2-ASN.tar.gz) and place GeoLite2-ASN.mmdb in the directory where you are planning to run the crawler.
-
 ### 2. Run:
 
 kaaawww-crawler -network=rvn -port=3003
@@ -22,7 +20,7 @@ currently for ravencoin.
 
 ### 3. Commands / Server Query:
 
-see if it's running: http://localhost:3003/node_count, http://localhost:3003/node_list, http://localhost:3003/debug
+see if it's running: http://localhost:3003/map http://localhost:3003/node_count, http://localhost:3003/node_list, http://localhost:3003/debug
 
 #### 4.3. Rate limiter: 
 (some host or VPS providers will balk at you for virus-like activity, which crawler is.)
