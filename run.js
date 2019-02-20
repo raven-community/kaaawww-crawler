@@ -5,7 +5,6 @@ const geoip = require('geoip-lite');
 const countries = require('i18n-iso-countries');
 const regions = require('country-region');
 const level = require('level');
-const maxmind = require('maxmind');
 const ravencore_lib = require('ravencore-lib');
 const networks = require('./networks');
 const BitSet = require('bitset');
@@ -14,8 +13,6 @@ const fs = require('fs');
 var network_name = "rvn";
 let api_port = 3000;
 let cwd = process.cwd();
-
-const asnLookup = maxmind.openSync(cwd+'/GeoLite2-ASN.mmdb');
 
 const stay_connected_time = 1000*60*5;//how long to wait for addr messages.
 let max_concurrent_connections = 500;
@@ -59,12 +56,16 @@ process.argv.forEach(function (val, index, array) {
 
 
 let menu = '<nav class="menu">'+
+  'Kaaawww Crawler'+
+  '<br>'+
+  'crawling the ravencoin network for available nodes'+
   '<ul class="menuLinkList">'+
     '<li class="menuLinks">'+
-      '<a class="menuLink" href="http://localhost:'+api_port+'/map"">Map</input>'+
+      '<a class="menuLink" href="javascript:gotoURL(\'map\')">Map</a>'+
     '</li>'+
+	'<li class="menuDivider">|</li>'+
     '<li class="menuLinks">'+
-      '<a class="menuLink" href="http://localhost:'+api_port+'/node_list"">List</input>'+
+      '<a class="menuLink" href="javascript:gotoURL(\'node_list\')">List</a>'+
     '</li>'+
   '</ul>'+
 '</nav>';
@@ -77,11 +78,13 @@ let menuCSS = ".menu {"+
   "top: 0px;"+
   "width: 100%;"+
   "overflow: hidden;"+
+  "color: #696969;"+
+  "text-align: center;"+
 "}"+
 ".menu .menuLinkList {"+
   "text-align: center;"+
+  "padding: 0;"+
   "background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.2) 25%, rgba(255, 255, 255, 0.2) 75%, rgba(255, 255, 255, 0) 100%);"+
-  "width: 100%;"+
   "box-shadow: 0 0 25px rgba(0, 0, 0, 0.1), inset 0 0 1px rgba(255, 255, 255, 0.6);"+
 "}"+
 ".menu .menuLinkList .menuLinks {"+
@@ -89,8 +92,8 @@ let menuCSS = ".menu {"+
 "}"+
 ".menu .menuLinkList .menuLinks .menuLink {"+
   "padding: 5px 10px;"+
-  "color: black;"+
-  "text-shadow: 1px 1px 1px grey;"+
+  "color: #696969;"+
+  "text-shadow: 1px 1px 1px #696969;"+
   "font-size: 30px;"+
   "text-decoration: none;"+
   "display: block;"+
@@ -101,7 +104,22 @@ let menuCSS = ".menu {"+
   "box-shadow: 0 0 10px rgba(0, 0, 0, 0.1), inset 0 0 1px rgba(255, 255, 255, 0.6);"+
   "background: rgba(255, 255, 255, 0.1);"+
   "color: rgba(0, 0, 0, 0.7);"+
+"}"+
+".menuDivider {"+
+    "padding: 5px 10px;"+
+    "color: #696969;"+
+    "text-shadow: 1px 1px 1px #696969;"+
+    "font-size: 30px;"+
+    "text-decoration: none;"+
+    "display: block;"+
+    "background: transparent;"+
+    "border: transparent;"+
+    "display: inline-block;"+
 "}";
+
+let gotoURL = 'function gotoURL(page) {'+
+'open(location.origin+"/"+page,"_self");'+
+'}';
 
 let protocolVersion;
 let seedNodes;
@@ -180,7 +198,7 @@ app.get('/node_list', function (req, res) {
     }
   })
   .on('close', function() {
-	let css = "<head><style>body {  background: #000; } table {  text-align: left;  margin: auto;  /*! border: 3px solid #9d9d9d; */ } table td, table th {  border: 3px solid #9d9d9d;  padding: 5px 2px; } table tbody td {  color: #9D9D9D; } table tr:nth-child(even) {  background: black;  border: 3px solid #9d9d9d; } table tbody tr {  background: #000;  border: 3px solid #5d4343; } table thead tr {  background: #9d9d9d; } table thead th {  font-size: 20px;  font-weight: bold;  color: #000;  text-align: left; } table tfoot {  font-size: 13px;  font-weight: bold;  color: #FFFFFF;  background: #CE3CFF;  background: -moz-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: -webkit-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: linear-gradient(to bottom, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  border-top: 5px solid #792396; } table tfoot td {  font-size: 13px; } table tfoot .links {  text-align: right; } table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; } table tbody tr:hover, table tbody td:hover {  background: #005107; }"+menuCSS+".menu{position:inherit}</style></head>"
+	let css = "<head><script>"+gotoURL+"</script><style>body {  background: #000; } table {  text-align: left;  margin: auto;  /*! border: 3px solid #9d9d9d; */ } table td, table th {  border: 3px solid #9d9d9d;  padding: 5px 2px; } table tbody td {  color: #9D9D9D; } table tr:nth-child(even) {  background: black;  border: 3px solid #9d9d9d; } table tbody tr {  background: #000;  border: 3px solid #5d4343; } table thead tr {  background: #9d9d9d; } table thead th {  font-size: 20px;  font-weight: bold;  color: #000;  text-align: left; } table tfoot {  font-size: 13px;  font-weight: bold;  color: #FFFFFF;  background: #CE3CFF;  background: -moz-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: -webkit-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: linear-gradient(to bottom, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  border-top: 5px solid #792396; } table tfoot td {  font-size: 13px; } table tfoot .links {  text-align: right; } table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; } table tbody tr:hover, table tbody td:hover {  background: #005107; }"+menuCSS+".menu{position:inherit}</style></head>"
 	let hostList = Object.values(host2lastconnection);
 	hostList = hostList.filter(obj => {return obj.success === true});
 	hostList = hostList.map(obj => ({ 
@@ -345,7 +363,7 @@ app.get('/map', function(req, res) {
 	  "options.done = function(datamap) {"+
             "$(datamap.svg[0][0]).on('click', '.bubbles', function(e) {"+
 			    "let bubbleInfo = JSON.parse(e.target.dataset.info);"+
-                "open('http://'+window.location.host+'/connections/'+bubbleInfo.host+'.csv');"+
+                "open(location.origin+'/connections/'+bubbleInfo.host+'.csv');"+
             "});"+
         "};"+
 	  "options.geographyConfig.highlightFillColor = '#59fc8d';"+
@@ -365,6 +383,7 @@ app.get('/map', function(req, res) {
 	  popupBubbles+
 	  "</script>"+
 	  menu+
+	  "<script>"+gotoURL+"</script>"+
 	  "</body>";
 	res.send(newMap);
 	});
