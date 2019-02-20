@@ -58,6 +58,50 @@ process.argv.forEach(function (val, index, array) {
 }); 
 
 
+let menu = '<nav class="menu">'+
+  '<ul class="menuLinkList">'+
+    '<li class="menuLinks">'+
+      '<a class="menuLink" href="http://localhost:'+api_port+'/map"">Map</input>'+
+    '</li>'+
+    '<li class="menuLinks">'+
+      '<a class="menuLink" href="http://localhost:'+api_port+'/node_list"">List</input>'+
+    '</li>'+
+  '</ul>'+
+'</nav>';
+
+let menuCSS = ".menu {"+
+  "mask-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, #ffffff 25%, #ffffff 75%, rgba(255, 255, 255, 0) 100%);"+
+  "margin: 0 auto;"+
+  "padding: 0px 0;"+
+  "position: absolute;"+
+  "top: 0px;"+
+  "width: 100%;"+
+  "overflow: hidden;"+
+"}"+
+".menu .menuLinkList {"+
+  "text-align: center;"+
+  "background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.2) 25%, rgba(255, 255, 255, 0.2) 75%, rgba(255, 255, 255, 0) 100%);"+
+  "width: 100%;"+
+  "box-shadow: 0 0 25px rgba(0, 0, 0, 0.1), inset 0 0 1px rgba(255, 255, 255, 0.6);"+
+"}"+
+".menu .menuLinkList .menuLinks {"+
+  "display: inline-block;"+
+"}"+
+".menu .menuLinkList .menuLinks .menuLink {"+
+  "padding: 5px 10px;"+
+  "color: black;"+
+  "text-shadow: 1px 1px 1px grey;"+
+  "font-size: 30px;"+
+  "text-decoration: none;"+
+  "display: block;"+
+  "background: transparent;"+
+  "border: transparent;"+
+"}"+
+".menu .menuLinkList .menuLinks .menuLink:hover {"+
+  "box-shadow: 0 0 10px rgba(0, 0, 0, 0.1), inset 0 0 1px rgba(255, 255, 255, 0.6);"+
+  "background: rgba(255, 255, 255, 0.1);"+
+  "color: rgba(0, 0, 0, 0.7);"+
+"}";
 
 let protocolVersion;
 let seedNodes;
@@ -136,7 +180,7 @@ app.get('/node_list', function (req, res) {
     }
   })
   .on('close', function() {
-	let css = "<head><style>body {  background: #000; } table {  text-align: left;  margin: auto;  /*! border: 3px solid #9d9d9d; */ } table td, table th {  border: 3px solid #9d9d9d;  padding: 5px 2px; } table tbody td {  color: #9D9D9D; } table tr:nth-child(even) {  background: black;  border: 3px solid #9d9d9d; } table tbody tr {  background: #000;  border: 3px solid #5d4343; } table thead tr {  background: #9d9d9d; } table thead th {  font-size: 20px;  font-weight: bold;  color: #000;  text-align: left; } table tfoot {  font-size: 13px;  font-weight: bold;  color: #FFFFFF;  background: #CE3CFF;  background: -moz-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: -webkit-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: linear-gradient(to bottom, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  border-top: 5px solid #792396; } table tfoot td {  font-size: 13px; } table tfoot .links {  text-align: right; } table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; } table tbody tr:hover, table tbody td:hover {  background: #005107; }</style></head>"
+	let css = "<head><style>body {  background: #000; } table {  text-align: left;  margin: auto;  /*! border: 3px solid #9d9d9d; */ } table td, table th {  border: 3px solid #9d9d9d;  padding: 5px 2px; } table tbody td {  color: #9D9D9D; } table tr:nth-child(even) {  background: black;  border: 3px solid #9d9d9d; } table tbody tr {  background: #000;  border: 3px solid #5d4343; } table thead tr {  background: #9d9d9d; } table thead th {  font-size: 20px;  font-weight: bold;  color: #000;  text-align: left; } table tfoot {  font-size: 13px;  font-weight: bold;  color: #FFFFFF;  background: #CE3CFF;  background: -moz-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: -webkit-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: linear-gradient(to bottom, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  border-top: 5px solid #792396; } table tfoot td {  font-size: 13px; } table tfoot .links {  text-align: right; } table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; } table tbody tr:hover, table tbody td:hover {  background: #005107; }"+menuCSS+".menu{position:inherit}</style></head>"
 	let hostList = Object.values(host2lastconnection);
 	hostList = hostList.filter(obj => {return obj.success === true});
 	hostList = hostList.map(obj => ({ 
@@ -152,6 +196,7 @@ app.get('/node_list', function (req, res) {
 	hostList = tableify(hostList).replace('host','host  ('+hostCount+')');
     res.send(
 	  css +
+	  menu+
       hostList
     );
   });
@@ -219,7 +264,6 @@ app.get('/map', function(req, res) {
 		location: obj.location,
 		country: obj.country,
 	}));
-	console.log(__dirname + '/node_modules')
 	app.use("/node_modules", express.static(__dirname + '/node_modules'));
 	let peerInfo = [];
 	let Highlight = [];
@@ -282,6 +326,7 @@ app.get('/map', function(req, res) {
 	  "<script src='//cdnjs.cloudflare.com/ajax/libs/topojson/1.6.9/topojson.min.js'></script>"+
 	  "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js'></script>"+
 	  "<script src='node_modules/datamaps/dist/datamaps.world.hires.min.js'></script>"+
+	  "<style>"+menuCSS+"</style>"+
 	  "</head>"+
 	  "<body style='background: #000; overflow: hidden; margin:10 auto;'>"+
 	  "<div id='container'></div>"+
@@ -319,6 +364,7 @@ app.get('/map', function(req, res) {
 	  "window.addEventListener('resize', function(event){map.resize();});"+
 	  popupBubbles+
 	  "</script>"+
+	  menu+
 	  "</body>";
 	res.send(newMap);
 	});
