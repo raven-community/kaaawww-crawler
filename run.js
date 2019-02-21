@@ -2,6 +2,7 @@ const p2p = require('ravencore-p2p');
 const express = require('express');
 const tableify = require('tableify');
 const geoip = require('geoip-lite');
+const maxmind = require('maxmind');
 const countries = require('i18n-iso-countries');
 const regions = require('country-region');
 const level = require('level');
@@ -9,11 +10,43 @@ const ravencore_lib = require('ravencore-lib');
 const networks = require('./networks');
 const BitSet = require('bitset');
 const fs = require('fs');
+const https = require('https');
+const targz = require('targz');
+let cwd = process.cwd();
+let geoliteFile = cwd+'/GeoLite2-ASN_20190219/GeoLite2-ASN.mmdb';
 
+getdl();//gets geolite2
+async function getdl() {
+	if (!fs.existsSync(geoliteFile)){
+	  const getGeoLite = https.get("https://geolite.maxmind.com/download/geoip/database/GeoLite2-ASN.tar.gz", function(response) {
+		response.pipe(fs.createWriteStream(cwd+"/GeoLite2-ASN.tar.gz"), { end: false });
+		response.on('end', () => {
+		  extractFile(cwd+"/GeoLite2-ASN.tar.gz",cwd);
+		});
+		  });
+	} else {
+		start();
+	}
+}
+
+function extractFile(zip,file){
+	targz.decompress({
+		src: zip,
+		dest: file
+	}, function(err){
+		if(err) {
+			console.log(err);
+		} else {
+			fs.unlinkSync(cwd+"/GeoLite2-ASN.tar.gz");
+			start();
+		}
+	});
+}
+
+function start(){
 var network_name = "rvn";
 let api_port = 3000;
-let cwd = process.cwd();
-
+const asnLookup = maxmind.openSync(geoliteFile);
 const stay_connected_time = 1000*60*5;//how long to wait for addr messages.
 let max_concurrent_connections = 500;
 let max_failed_connections_per_minute = 1000;
@@ -22,21 +55,15 @@ const addr_db_ttl = -1;//How long to save addr messages for. The saved addr mess
 const connect_timeout = 1000*60;
 const handshake_timeout = 1000*60;
 
-
 var dir = cwd+'/databases';
 if (!fs.existsSync(dir)){
   fs.mkdirSync(dir);
 }
 
-
-
 let indexTasks = [];
 
 process.argv.forEach(function (val, index, array) {
   let arr = val.split("=");
-  if (arr.length === 2 && arr[0] === "-network") {
-    network_name = arr[1];
-  }
   if (arr.length === 2 && arr[0] === "-port") {
     api_port = arr[1];
   }
@@ -53,7 +80,6 @@ process.argv.forEach(function (val, index, array) {
     indexTasks.push(reindexConnectionTimes);
   }
 }); 
-
 
 let menu = '<nav class="menu">'+
   'Kaaawww Crawler'+
@@ -135,7 +161,6 @@ networks.forEach(network => {
 
 const db = level(cwd+'/databases/'+network_name, { valueEncoding: 'json', cacheSize: 128*1024*1024, blockSize: 4096, writeBufferSize: 4*1024*1024 });
 
-
 //Database key prefixes
 const connection_prefix = "connection/";
 const connection_by_time_prefix = "connection-by-time/";
@@ -159,6 +184,36 @@ let failed_connections_queue = [];//queue of timestamps
 
 const messages = new p2p.Messages();
 
+let data = {
+  epoch_hour: 0,
+  active_host: 0,
+  hour2first_and_last_connection_time: {},
+  hostdata: {
+    host2active: {},
+    host2lastconnection: {}
+  }
+};
+
+let shifting_data = false;
+
+var p = Promise.resolve();
+indexTasks.forEach(indexTask => {
+  p = p.then(() => indexTask());//sequentially execute indextasks
+})
+p.then(function() {
+  console.log("Loading connections from db. This can take a while.");
+  loadDataFromDb().then(function() {
+    console.log("Data loaded. Acccepting requests");
+    app.listen(api_port);
+    setInterval(connectToPeers, 50);
+  
+    if (addr_db_ttl !== undefined && addr_db_ttl > 0) 
+      setInterval(removeOldAddr, 1000*60);
+  });
+});
+let removing_addresses = false;
+
+//webpage rendering
 var app = express();
 
 app.get('/node_count', function (req, res) {
@@ -203,8 +258,9 @@ app.get('/node_list', function (req, res) {
 	hostList = hostList.filter(obj => {return obj.success === true});
 	hostList = hostList.map(obj => ({ 
 		host: obj.host + ':' + obj.port,
+		provider: obj.isp,
 		version: obj.version,
-		bestHeight: obj.bestHeight,
+		Height: obj.bestHeight,
 		lat: obj.lat,
 		long: obj.long,
 		location: obj.location
@@ -281,6 +337,7 @@ app.get('/map', function(req, res) {
 		long: obj.long,
 		location: obj.location,
 		country: obj.country,
+		isp: obj.isp,
 	}));
 	app.use("/node_modules", express.static(__dirname + '/node_modules'));
 	let peerInfo = [];
@@ -296,6 +353,7 @@ app.get('/map', function(req, res) {
 			"location: '"+escapeLocation+"',"+
 			"latitude: "+hostList[i].lat+","+
 			"longitude: "+hostList[i].long+","+
+			"isp: '"+hostList[i].isp+"',"+
 			"radius: 3, fillKey: 'peer'}"
 		);
 		if (hostList[i].country){Highlight.push(hostList[i].country);}
@@ -317,6 +375,7 @@ app.get('/map', function(req, res) {
 	  "popupTemplate: function(geo, data) {"+
 	    "return \"<div class='hoverinfo'>"+
 		"host: \" + data.host + \":\" + data.port + \"<br>"+
+		"provider: \" + data.isp + \"<br>"+
 		"version: \" + data.version + \"<br>"+
 		"height: \" + data.bestHeight + \"<br>"+
 		"location: \" + data.location + \"<br>"+
@@ -389,20 +448,11 @@ app.get('/map', function(req, res) {
 	});
 });
 
+//Functions
 function formatPercentage(val) {
   if (isNaN(val)) val = 0;
   return (val*100).toFixed(2)+"%";
 }
-
-let data = {
-  epoch_hour: 0,
-  active_host: 0,
-  hour2first_and_last_connection_time: {},
-  hostdata: {
-    host2active: {},
-    host2lastconnection: {}
-  }
-};
 
 function add_connection2data(connection) {
   if (shifting_data) {//delay by 1 second
@@ -542,8 +592,6 @@ function shift_data_one_hour() {
   });
 }
 
-let shifting_data = false;
-
 function update_if_hour_changed() {
   let currentTime = (new Date()).getTime();
   let epoch_hour = Math.floor(currentTime/(1000*60*60));
@@ -554,23 +602,6 @@ function update_if_hour_changed() {
   shift_data_one_hour();
   shifting_data = false;
 }
-
-var p = Promise.resolve();
-indexTasks.forEach(indexTask => {
-  p = p.then(() => indexTask());//sequentially execute indextasks
-})
-p.then(function() {
-  console.log("Loading connections from db. This can take a while.");
-  loadDataFromDb().then(function() {
-    console.log("Data loaded. Acccepting requests");
-    app.listen(api_port);
-    setInterval(connectToPeers, 50);
-  
-    if (addr_db_ttl !== undefined && addr_db_ttl > 0) 
-      setInterval(removeOldAddr, 1000*60);
-  });
-});
-
 
 function createRandomId () {
   return '' + Math.random().toString(36).substr(2, 9);
@@ -847,7 +878,10 @@ function connectToPeers() {
         let node_getutxo = (peer.services & 2) !== 0;
         let node_network = (peer.services & 1) !== 0;
 		let geo = geoip.lookup(peer.host);
+		let ISP = asnLookup.get(peer.host)
 		let city, region, country, regionName, lat, long;
+		if (!ISP) ISP = undefined;
+		ISP = ISP.autonomous_system_organization;
 		if (geo) {
 			city = geo.city ? geo.city : undefined
 			region = geo.region ? geo.region : undefined
@@ -898,6 +932,7 @@ function connectToPeers() {
 		  long: long,
 		  location: location,
 		  country: country,
+		  isp: ISP,
         };
         if (!connectionSaved) {
           connectionSaved = true;
@@ -1022,8 +1057,6 @@ function refreshQueue() {
   });
 }
 
-let removing_addresses = false;
-
 function removeOldAddr() {
   if (removing_addresses) return;
   removing_addresses = true;
@@ -1057,6 +1090,8 @@ function removeOldAddr() {
   })
   .on('end', function () {
   });
+
+}
 
 }
 
