@@ -1,6 +1,6 @@
 {
   "name": "kaaawww-crawler",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Ravencoin node crawler",
   "main": "run.js",
   "scripts": {
@@ -19,7 +19,7 @@
     "level": "^4.0.0",
     "maxmind": "^2.7.0",
     "node-buffers": "^0.1.1",
-    "ravencore-lib": "^1.0.3",
+    "ravencore-lib": "github:raven-community/ravencore-lib#master",
     "ravencore-p2p": "^1.0.0",
     "tableify": "^1.1.0",
     "targz": "^1.0.1"
