@@ -79,7 +79,7 @@ process.argv.forEach(function (val, index, array) {
   if (arr.length === 1 && arr[0] === "-reindex-connection-times") {
     indexTasks.push(reindexConnectionTimes);
   }
-}); 
+});
 
 let menu = '<nav class="menu">'+
   'Kaaawww Crawler'+
@@ -186,7 +186,6 @@ const messages = new p2p.Messages();
 
 let data = {
   epoch_hour: 0,
-  active_host: 0,
   hour2first_and_last_connection_time: {},
   hostdata: {
     host2active: {},
@@ -206,8 +205,8 @@ p.then(function() {
     console.log("Data loaded. Acccepting requests");
     app.listen(api_port);
     setInterval(connectToPeers, 50);
-  
-    if (addr_db_ttl !== undefined && addr_db_ttl > 0) 
+
+    if (addr_db_ttl !== undefined && addr_db_ttl > 0)
       setInterval(removeOldAddr, 1000*60);
   });
 });
@@ -215,6 +214,969 @@ let removing_addresses = false;
 
 //webpage rendering
 var app = express();
+
+app.get('/', function (req, res) {
+	let hours = req.query.hours;
+	if (!isFinite(hours) || hours > 10) hours = 10;
+	let host2lastconnection = {};
+	let host2active = {};
+	recentConnections(1000*60*60*hours)
+	.on('data', function(connection) {
+		let key = connection.host+":"+connection.port;
+		if (host2lastconnection[key] === undefined || connection.connectTime > host2lastconnection[key].connectTime)  {
+			host2lastconnection[key] = connection;
+		}
+	})
+	.on('close', function() {
+		let css = "<head><script>"+gotoURL+"</script><style>body {  background: #000; } "+
+		menuCSS+".menu{position:inherit}"+
+		"div.home {"+
+    "margin-top: 60px;"+
+    "padding: 10px;"+
+		"font-size: large;"+
+		"text-align: center;"+
+    "background-color: #333;"+
+		"color: #696969;"+
+    "-webkit-border-radius: 6px;"+
+    "-moz-border-radius: 6px;"+
+    "border-radius: 6px;"+
+		"}a{color: #7a7a7a;}"+
+		"</style></head>";
+		let home = "<div class='home'>"+
+        "<h3>What is Kaaawww crawler?</h3>"+
+        "<p><a href='https://github.com/raven-community/kaaawww-crawler'>kaaawww crawler</a>"+
+				" is based off of <a href='https://github.com/jeroz1/Ravennodes'>Ravennodes(Python)</a>"+
+				" this version is in javascript, it estimates<br> the size of the Ravencoin network by finding"+
+				" all the <b>reachable nodes</b> These are the nodes that accept incoming connections.<br>"+
+				" This method will not list all full nodes because not all nodes have an open port that can be"+
+        "probed using Kaaawww crawler.<br> These nodes are either behind firewalls or configured to not listen for connections.</p>"+
+    "</div>";
+    res.send(
+			css+
+			"<body>"+
+		 menu+
+		 home+
+		 "</body>"
+    );
+  });
+});
+
+app.get('/charts/bar', function(req, res) {
+	let hours = req.query.hours;
+	if (!isFinite(hours) || hours > 10) hours = 10;
+	let host2lastconnection = {};
+	let host2active = {};
+	recentConnections(1000*60*60*hours)
+	.on('data', function(connection) {
+		let key = connection.host+":"+connection.port;
+		if (host2lastconnection[key] === undefined || connection.connectTime > host2lastconnection[key].connectTime)  {
+			host2lastconnection[key] = connection;
+		}
+	})
+	.on('close', function() {
+		let hostList = Object.keys(host2lastconnection).filter(host => host2lastconnection[host].success);
+		let hostData = Object.values(host2lastconnection).filter(obj => {return obj.success === true});
+		let hostCount = hostList.length;
+		let subversion = [];
+		let country = [];
+		let isp = [];
+		hostData = hostData.map(obj => ({
+			subversion: obj.subversion,
+			country: obj.country,
+			isp: obj.isp
+		}));
+		for(i=0;i<hostCount;i++){
+			subversion.push(hostData[i].subversion.split(":").pop().match(/[+-]?\d+(?:\.\d+)(?:\.\d+)?/g).pop());
+			country.push(hostData[i].country);
+			isp.push(hostData[i].isp);
+		}
+		subversion = subversion.sort( (a, b) => b.localeCompare(a, undefined, { numeric:true }) );
+		country = country.sort();
+		isp = isp.sort();
+		let subversionCount = {};
+		let subversionList = {}
+		let countryCount = {};
+		let countryList = {};
+		let ispCount = {};
+		let ispList = {};
+		let allinfo = {
+			count: {
+				subversion: 0,
+				country: 0,
+				isp: 0
+			}
+		};
+    subversion.forEach(function(i) {
+			 subversionCount[i] = (subversionCount[i]||0) + 1;
+			 subversionList[i] = {};
+			 subversionList[i].count = (subversionCount[i]||0) + 1;
+		});
+		country.forEach(function(i) {
+			 countryCount[i] = (countryCount[i]||0) + 1;
+			 countryList[i] = {};
+			 countryList[i].count = (countryCount[i]||0) + 1;
+		});
+    isp.forEach(function(i) {
+			 ispCount[i] = (ispCount[i]||0) + 1;
+			 ispList[i] = {};
+			 ispList[i].count = (ispCount[i]||0) + 1;
+		 });
+		 let subversionListSorted = {};
+		 let countryListSorted = {};
+		 let ispListSorted = {};
+		 Object.keys(subversionList)
+		 		.map(key => ({ key: key, value: subversionList[key] }))
+		 		.sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				.forEach((sortedData) => subversionListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					.replace('{"key":"'+sortedData.key+'"','')
+					.replace(',"value":','')
+					.slice(0, -1)
+				)));
+			Object.keys(countryList)
+				 .map(key => ({ key: key, value: countryList[key] }))
+				 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				 .forEach((sortedData) => countryListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					 .replace('{"key":"'+sortedData.key+'"','')
+					 .replace(',"value":','')
+					 .slice(0, -1)
+				 )));
+			 Object.keys(ispList)
+	 			 .map(key => ({ key: key, value: ispList[key] }))
+	 			 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+	 			 .forEach((sortedData) => ispListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+	 				 .replace('{"key":"'+sortedData.key+'"','')
+	 				 .replace(',"value":','')
+	 				 .slice(0, -1)
+	 			 )));
+		for (i in subversionCount){
+			allinfo.count.subversion = allinfo.count.subversion + subversionCount[i]
+		}
+		for (i in countryCount){
+			allinfo.count.country = allinfo.count.country + countryCount[i]
+		}
+		for (i in ispCount){
+			allinfo.count.isp = allinfo.count.isp + ispCount[i]
+		}
+		for (i in subversionListSorted) {
+				let fixed = (subversionListSorted[i].count / allinfo.count.subversion) * 100;
+				fixed = fixed.toFixed(2)
+				subversionListSorted[i].percent = fixed;
+		};
+		for (i in countryListSorted) {
+				let fixed = (countryListSorted[i].count / allinfo.count.country) * 100;
+				fixed = fixed.toFixed(2)
+				countryListSorted[i].percent = fixed;
+		};
+		for (i in ispListSorted) {
+				let fixed = (ispListSorted[i].count / allinfo.count.isp) * 100;
+				fixed = fixed.toFixed(2)
+				ispListSorted[i].percent = fixed;
+		};
+		let subversionListKeys = [];
+		let subversionListValues = [];
+		let countryListKeys = [];
+		let countryListValues = [];
+		let ispListKeys = [];
+		let ispListValues = [];
+		for (i in subversionListSorted){
+				subversionListKeys.push('"'+i+'"')
+				subversionListValues.push(subversionListSorted[i]['count'])
+		}
+		for (i in countryListSorted){
+			countryListKeys.push('"'+i+'"')
+			countryListValues.push(countryListSorted[i]['count'])
+		}
+		for (i in ispListSorted){
+			ispListKeys.push('"'+i+'"')
+			ispListValues.push(ispListSorted[i]['count'])
+		}
+		allinfo.subversion = subversionListSorted;
+		allinfo.country = countryListSorted;
+		allinfo.isp = ispListSorted;
+		let html = "<head>"+
+			"<style>"+
+			"body {  background: #000; }"+
+			" table {  text-align: left;  margin: auto; }"+
+			" table td, table th {  border: 3px solid #9d9d9d;  padding: 5px 2px; }"+
+			" table tbody td, table tbody th {  color: #9D9D9D; }"+
+			" table tr:nth-child(even) {  background: black;  border: 3px solid #9d9d9d; }"+
+			" table tbody tr {  background: #000;  border: 3px solid #5d4343; }"+
+			" table thead tr {  background: #9d9d9d; }"+
+			" table thead th {  font-size: 20px;  font-weight: bold;  color: #000;  text-align: left; }"+
+			" table tfoot {  font-size: 13px;  font-weight: bold;  color: #FFFFFF;  background: #CE3CFF;  background: -moz-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: -webkit-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: linear-gradient(to bottom, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  border-top: 5px solid #792396; }"+
+			" table tfoot td {  font-size: 13px; }"+
+			" table tfoot .links {  text-align: right; }"+
+			" table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; }"+
+			" table tbody tr:hover, table tbody td:hover {  background: #005107; }"+
+			menuCSS+
+			" .menu { position: inherit; }</style>"+
+			"</style>"+
+			"<script>"+gotoURL+"</script>"+
+			"<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>"+
+  		"<script src='https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js'></script>"+
+			"</head>"+
+			"<body>"+
+			menu+
+			"<div id='version-table'>"+
+			"</div>"+
+			"<script>"+
+			"var myPlot = document.getElementById('version-table');"+
+			"var layout = {"+
+			  "showlegend: true,"+
+			  "legend: {orientation: 'h',x:0,y:-0.5},"+
+	      "plot_bgcolor:'#000',"+
+				"constraintext: 'inside',"+
+	      "paper_bgcolor:'#000',"+
+				"xaxis: {"+
+			    "tickangle: -20"+
+			  "}"+
+			"};"+
+			"var data = [{"+
+			  `y: [${subversionListValues}],`+
+			  `x: [${subversionListKeys}],`+
+			  "type: 'bar',"+
+				"legendgroup: 'group1',"+
+				"hoverinfo: 'x+y',"+
+				"textposition: 'auto',"+
+				`text: [${subversionListValues}].map(String),`+
+				"name: 'Subversions',"+
+				"marker: {"+
+			    "color: 'rgba(69, 90, 210, .7)',"+
+			    "opacity: 0.6,"+
+			    "line: {"+
+			      "color: 'rgb(165, 0, 0)',"+
+			      "width: 1.5"+
+			    "}"+
+			  "},"+
+				"textfont: {color:'#696969'},"+
+				"outsidetextfont : {color:'#696969'},"+
+				"insidetextfont: {color:'#696969'}"+
+			"},"+
+			"{"+
+			  `y: [${countryListValues.slice(0,10)}],`+
+			  `x: [${countryListKeys.slice(0,10)}],`+
+			  "type: 'bar',"+
+				"legendgroup: 'group2',"+
+				"hoverinfo: 'x+y',"+
+				"textposition: 'auto',"+
+				`text: [${countryListValues}].map(String),`+
+				"name: 'Countries',"+
+				"marker: {"+
+			    "color: 'rgba(107, 114, 113, .7)',"+
+			    "opacity: 0.6,"+
+			    "line: {"+
+			      "color: 'rgb(165, 0, 0)',"+
+			      "width: 1.5"+
+			    "}"+
+			  "},"+
+				"textfont: {color:'#696969'},"+
+				"outsidetextfont : {color:'#696969'},"+
+				"insidetextfont: {color:'#696969'}"+
+			"},"+
+			"{"+
+			  `y: [${ispListValues.slice(0,10)}],`+
+			  `x: [${ispListKeys.slice(0,10)}],`+
+			  "type: 'bar',"+
+				"legendgroup: 'group3',"+
+				"hoverinfo: 'x+y',"+
+				"textposition: 'auto',"+
+				`text: [${ispListValues}].map(String),`+
+				"name: 'ISP',"+
+				"marker: {"+
+			    "color: 'rgba(165, 69, 209, .7)',"+//69, 90, 210
+			    "opacity: 0.6,"+
+			    "line: {"+
+			      "color: 'rgb(165, 0, 0)',"+
+			      "width: 1.5"+
+			    "}"+
+			  "},"+
+				"textfont: {color:'#696969'},"+
+				"outsidetextfont : {color:'#696969'},"+
+				"insidetextfont: {color:'#696969'}"+
+			"}];"+
+			"Plotly.newPlot(myPlot, data, layout, {responsive: true,displaylogo: false,"+
+			"modeBarButtonsToRemove: ['zoom2d','pan2d','select2d','lasso2d','zoomIn2d','zoomOut2d','autoScale2d','toggleSpikelines','hoverCompareCartesian','hoverClosestCartesian']});"+
+			"myPlot.on('plotly_legendclick',function() { return false; });"+
+			"</script>"+
+			"</body>";
+		res.send(
+			html
+		);
+	});
+});
+
+app.get('/charts/pie', function(req, res) {
+	let hours = req.query.hours;
+	if (!isFinite(hours) || hours > 10) hours = 10;
+	let host2lastconnection = {};
+	let host2active = {};
+	recentConnections(1000*60*60*hours)
+	.on('data', function(connection) {
+		let key = connection.host+":"+connection.port;
+		if (host2lastconnection[key] === undefined || connection.connectTime > host2lastconnection[key].connectTime)  {
+			host2lastconnection[key] = connection;
+		}
+	})
+	.on('close', function() {
+		let hostList = Object.keys(host2lastconnection).filter(host => host2lastconnection[host].success);
+		let hostData = Object.values(host2lastconnection).filter(obj => {return obj.success === true});
+		let hostCount = hostList.length;
+		let subversion = [];
+		let country = [];
+		let isp = [];
+		hostData = hostData.map(obj => ({
+			subversion: obj.subversion,
+			country: obj.country,
+			isp: obj.isp
+		}));
+		for(i=0;i<hostCount;i++){
+			subversion.push(hostData[i].subversion.split(":").pop().match(/[+-]?\d+(?:\.\d+)(?:\.\d+)?/g).pop());
+			country.push(hostData[i].country);
+			isp.push(hostData[i].isp);
+		}
+		subversion = subversion.sort( (a, b) => b.localeCompare(a, undefined, { numeric:true }) );
+		country = country.sort();
+		isp = isp.sort();
+		let subversionCount = {};
+		let subversionList = {}
+		let countryCount = {};
+		let countryList = {};
+		let ispCount = {};
+		let ispList = {};
+		let allinfo = {
+			count: {
+				subversion: 0,
+				country: 0,
+				isp: 0
+			}
+		};
+    subversion.forEach(function(i) {
+			 subversionCount[i] = (subversionCount[i]||0) + 1;
+			 subversionList[i] = {};
+			 subversionList[i].count = (subversionCount[i]||0) + 1;
+		});
+		country.forEach(function(i) {
+			 countryCount[i] = (countryCount[i]||0) + 1;
+			 countryList[i] = {};
+			 countryList[i].count = (countryCount[i]||0) + 1;
+		});
+    isp.forEach(function(i) {
+			 ispCount[i] = (ispCount[i]||0) + 1;
+			 ispList[i] = {};
+			 ispList[i].count = (ispCount[i]||0) + 1;
+		 });
+		 let subversionListSorted = {};
+		 let countryListSorted = {};
+		 let ispListSorted = {};
+		 Object.keys(subversionList)
+		 		.map(key => ({ key: key, value: subversionList[key] }))
+		 		.sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				.forEach((sortedData) => subversionListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					.replace('{"key":"'+sortedData.key+'"','')
+					.replace(',"value":','')
+					.slice(0, -1)
+				)));
+			Object.keys(countryList)
+				 .map(key => ({ key: key, value: countryList[key] }))
+				 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				 .forEach((sortedData) => countryListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					 .replace('{"key":"'+sortedData.key+'"','')
+					 .replace(',"value":','')
+					 .slice(0, -1)
+				 )));
+			 Object.keys(ispList)
+	 			 .map(key => ({ key: key, value: ispList[key] }))
+	 			 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+	 			 .forEach((sortedData) => ispListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+	 				 .replace('{"key":"'+sortedData.key+'"','')
+	 				 .replace(',"value":','')
+	 				 .slice(0, -1)
+	 			 )));
+		for (i in subversionCount){
+			allinfo.count.subversion = allinfo.count.subversion + subversionCount[i]
+		}
+		for (i in countryCount){
+			allinfo.count.country = allinfo.count.country + countryCount[i]
+		}
+		for (i in ispCount){
+			allinfo.count.isp = allinfo.count.isp + ispCount[i]
+		}
+		for (i in subversionListSorted) {
+				let fixed = (subversionListSorted[i].count / allinfo.count.subversion) * 100;
+				fixed = fixed.toFixed(2)
+				subversionListSorted[i].percent = fixed;
+		};
+		for (i in countryListSorted) {
+				let fixed = (countryListSorted[i].count / allinfo.count.country) * 100;
+				fixed = fixed.toFixed(2)
+				countryListSorted[i].percent = fixed;
+		};
+		for (i in ispListSorted) {
+				let fixed = (ispListSorted[i].count / allinfo.count.isp) * 100;
+				fixed = fixed.toFixed(2)
+				ispListSorted[i].percent = fixed;
+		};
+		let subversionListKeys = [];
+		let subversionListValues = [];
+		let countryListKeys = [];
+		let countryListValues = [];
+		let ispListKeys = [];
+		let ispListValues = [];
+		for (i in subversionListSorted){
+				subversionListKeys.push('"'+i+'('+subversionListSorted[i]['count']+')"')
+				subversionListValues.push(subversionListSorted[i]['count'])
+		}
+		for (i in countryListSorted){
+			countryListKeys.push('"'+i+'('+countryListSorted[i]['count']+')"')
+			countryListValues.push(countryListSorted[i]['count'])
+		}
+		for (i in ispListSorted){
+			ispListKeys.push('"'+i+'('+ispListSorted[i]['count']+')"')
+			ispListValues.push(ispListSorted[i]['count'])
+		}
+		allinfo.subversion = subversionListSorted;
+		allinfo.country = countryListSorted;
+		allinfo.isp = ispListSorted;
+		let html = "<head>"+
+			"<style>"+
+			"body {  background: #000; }"+
+			" table {  text-align: left;  margin: auto; }"+
+			" table td, table th {  border: 3px solid #9d9d9d;  padding: 5px 2px; }"+
+			" table tbody td, table tbody th {  color: #9D9D9D; }"+
+			" table tr:nth-child(even) {  background: black;  border: 3px solid #9d9d9d; }"+
+			" table tbody tr {  background: #000;  border: 3px solid #5d4343; }"+
+			" table thead tr {  background: #9d9d9d; }"+
+			" table thead th {  font-size: 20px;  font-weight: bold;  color: #000;  text-align: left; }"+
+			" table tfoot {  font-size: 13px;  font-weight: bold;  color: #FFFFFF;  background: #CE3CFF;  background: -moz-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: -webkit-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: linear-gradient(to bottom, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  border-top: 5px solid #792396; }"+
+			" table tfoot td {  font-size: 13px; }"+
+			" table tfoot .links {  text-align: right; }"+
+			" table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; }"+
+			" table tbody tr:hover, table tbody td:hover {  background: #005107; }"+
+			menuCSS+
+			" .menu { position: inherit; }</style>"+
+			"</style>"+
+			"<script>"+gotoURL+"</script>"+
+			"<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>"+
+  		"<script src='https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js'></script>"+
+			"</head>"+
+			"<body>"+
+			menu+
+			"<div id='version-table'>"+
+			"</div>"+
+			"<script>"+
+			"var myPlot = document.getElementById('version-table');"+
+			"var layout = {"+
+			  "showlegend: true,"+
+			  "legend: {orientation: 'v'},"+
+	      "plot_bgcolor:'#000',"+
+	      "paper_bgcolor:'#000',"+
+				"grid: {rows: 1, columns: 3},"+
+				"annotations: ["+
+			    "{"+
+			      "font: {"+
+			        "size: 20"+
+			      "},"+
+			      "showarrow: false,"+
+						"x: .11,"+
+      			"y: 0.5,"+
+			      "text: 'Top 10<br>Versions'"+
+			    "},"+
+					"{"+
+						"font: {"+
+							"size: 20"+
+						"},"+
+						"showarrow: false,"+
+						"text: 'Top 10<br>Countries'"+
+					"},"+
+			    "{"+
+			      "font: {"+
+			        "size: 20"+
+			      "},"+
+			      "showarrow: false,"+
+						"x: 0.88,"+
+			      "y: 0.5,"+
+			      "text: 'Top 10<br>ISP'"+
+			    "}"+
+			  "]"+
+			"};"+
+			"var data = [{"+
+			  `values: [${subversionListValues}],`+
+			  `labels: [${subversionListKeys}],`+
+			  "type: 'pie',"+
+				"hole: .5,"+
+				"legendgroup: 'group1',"+
+				"hoverinfo: 'label+percent',"+
+				"textinfo: 'percent',"+
+				"textposition: 'auto',"+
+				"textfont: {color:'#696969'},"+
+				"outsidetextfont : {color:'#696969'},"+
+				"insidetextfont: {color:'#000'},"+
+				"domain: {"+
+			    "row: 0,"+
+			    "column: 0"+
+			  "}"+
+			"},"+
+			"{"+
+			  `values: [${countryListValues.slice(0,10)}],`+
+			  `labels: [${countryListKeys.slice(0,10)}],`+
+			  "type: 'pie',"+
+				"hole: .5,"+
+				"legendgroup: 'group2',"+
+				"hoverinfo: 'label+percent',"+
+				"textinfo: 'percent',"+
+				"textposition: 'auto',"+
+				"textfont: {color:'#696969'},"+
+				"outsidetextfont : {color:'#696969'},"+
+				"insidetextfont: {color:'#000'},"+
+				"domain: {"+
+			    "row: 0,"+
+			    "column: 1"+
+			  "}"+
+			"},"+
+			"{"+
+			  `values: [${ispListValues.slice(0,10)}],`+
+			  `labels: [${ispListKeys.slice(0,10)}],`+
+			  "type: 'pie',"+
+				"hole: .5,"+
+				"legendgroup: 'group3',"+
+				"hoverinfo: 'label+percent',"+
+				"textinfo: 'percent',"+
+				"textposition: 'auto',"+
+				"textfont: {color:'#696969'},"+
+				"outsidetextfont : {color:'#696969'},"+
+				"insidetextfont: {color:'#000'},"+
+				"domain: {"+
+			    "row: 0,"+
+			    "column: 2"+
+			  "}"+
+			"}];"+
+			"Plotly.newPlot(myPlot, data, layout, {responsive: true,displaylogo: false});"+
+			"myPlot.on('plotly_legendclick',function() { return false; });"+
+			"</script>"+
+			"</body>";
+		res.send(
+			html
+		);
+	});
+});
+
+app.get('/charts/table', function(req, res) {
+	let hours = req.query.hours;
+	if (!isFinite(hours) || hours > 10) hours = 10;
+	let host2lastconnection = {};
+	let host2active = {};
+	recentConnections(1000*60*60*hours)
+	.on('data', function(connection) {
+		let key = connection.host+":"+connection.port;
+		if (host2lastconnection[key] === undefined || connection.connectTime > host2lastconnection[key].connectTime)  {
+			host2lastconnection[key] = connection;
+		}
+	})
+	.on('close', function() {
+		let hostList = Object.keys(host2lastconnection).filter(host => host2lastconnection[host].success);
+		let hostData = Object.values(host2lastconnection).filter(obj => {return obj.success === true});
+		let hostCount = hostList.length;
+		let subversion = [];
+		let country = [];
+		let isp = [];
+		hostData = hostData.map(obj => ({
+			subversion: obj.subversion,
+			country: obj.country,
+			isp: obj.isp
+		}));
+		for(i=0;i<hostCount;i++){
+			subversion.push(hostData[i].subversion.split(":").pop().match(/[+-]?\d+(?:\.\d+)(?:\.\d+)?/g).pop());
+			country.push(hostData[i].country);
+			isp.push(hostData[i].isp);
+		}
+		subversion = subversion.sort( (a, b) => b.localeCompare(a, undefined, { numeric:true }) );
+		country = country.sort();
+		isp = isp.sort();
+		let subversionCount = {};
+		let subversionList = {}
+		let countryCount = {};
+		let countryList = {};
+		let ispCount = {};
+		let ispList = {};
+		let allinfo = {
+			count: {
+				subversion: 0,
+				country: 0,
+				isp: 0
+			}
+		};
+    subversion.forEach(function(i) {
+			 subversionCount[i] = (subversionCount[i]||0) + 1;
+			 subversionList[i] = {};
+			 subversionList[i].count = (subversionCount[i]||0) + 1;
+		});
+		country.forEach(function(i) {
+			 countryCount[i] = (countryCount[i]||0) + 1;
+			 countryList[i] = {};
+			 countryList[i].count = (countryCount[i]||0) + 1;
+		});
+    isp.forEach(function(i) {
+			 ispCount[i] = (ispCount[i]||0) + 1;
+			 ispList[i] = {};
+			 ispList[i].count = (ispCount[i]||0) + 1;
+		 });
+		 let subversionListSorted = {};
+		 let countryListSorted = {};
+		 let ispListSorted = {};
+		 Object.keys(subversionList)
+		 		.map(key => ({ key: key, value: subversionList[key] }))
+		 		.sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				.forEach((sortedData) => subversionListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					.replace('{"key":"'+sortedData.key+'"','')
+					.replace(',"value":','')
+					.slice(0, -1)
+				)));
+			Object.keys(countryList)
+				 .map(key => ({ key: key, value: countryList[key] }))
+				 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				 .forEach((sortedData) => countryListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					 .replace('{"key":"'+sortedData.key+'"','')
+					 .replace(',"value":','')
+					 .slice(0, -1)
+				 )));
+			 Object.keys(ispList)
+	 			 .map(key => ({ key: key, value: ispList[key] }))
+	 			 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+	 			 .forEach((sortedData) => ispListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+	 				 .replace('{"key":"'+sortedData.key+'"','')
+	 				 .replace(',"value":','')
+	 				 .slice(0, -1)
+	 			 )));
+		for (i in subversionCount){
+			allinfo.count.subversion = allinfo.count.subversion + subversionCount[i]
+		}
+		for (i in countryCount){
+			allinfo.count.country = allinfo.count.country + countryCount[i]
+		}
+		for (i in ispCount){
+			allinfo.count.isp = allinfo.count.isp + ispCount[i]
+		}
+		for (i in subversionListSorted) {
+				let fixed = (subversionListSorted[i].count / allinfo.count.subversion) * 100;
+				fixed = fixed.toFixed(2)
+				subversionListSorted[i].percent = fixed;
+		};
+		for (i in countryListSorted) {
+				let fixed = (countryListSorted[i].count / allinfo.count.country) * 100;
+				fixed = fixed.toFixed(2)
+				countryListSorted[i].percent = fixed;
+		};
+		for (i in ispListSorted) {
+				let fixed = (ispListSorted[i].count / allinfo.count.isp) * 100;
+				fixed = fixed.toFixed(2)
+				ispListSorted[i].percent = fixed;
+		};
+		let subversionListKeys = [];
+		let subversionListValues = [];
+		let subversionListPercents = [];
+		let countryListKeys = [];
+		let countryListValues = [];
+		let countryListPercents = [];
+		let ispListKeys = [];
+		let ispListValues = [];
+		let ispListPercents = [];
+		for (i in subversionListSorted){
+				subversionListKeys.push('"'+i+'"')
+				subversionListValues.push(subversionListSorted[i]['count'])
+				subversionListPercents.push(subversionListSorted[i]['percent'])
+		}
+		for (i in countryListSorted){
+			countryListKeys.push('"'+i+'"')
+			countryListValues.push(countryListSorted[i]['count'])
+			countryListPercents.push(countryListSorted[i]['percent'])
+		}
+		for (i in ispListSorted){
+			ispListKeys.push('"'+i+'"')
+			ispListValues.push(ispListSorted[i]['count'])
+			ispListPercents.push(ispListSorted[i]['percent'])
+		}
+		allinfo.subversion = subversionListSorted;
+		allinfo.country = countryListSorted;
+		allinfo.isp = ispListSorted;
+		let html = "<head>"+
+			"<style>"+
+			"body {  background: #000; }"+
+			" table {  text-align: left;  margin: auto; }"+
+			" table td, table th {  border: 3px solid #9d9d9d;  padding: 5px 2px; }"+
+			" table tbody td, table tbody th {  color: #9D9D9D; }"+
+			" table tr:nth-child(even) {  background: black;  border: 3px solid #9d9d9d; }"+
+			" table tbody tr {  background: #000;  border: 3px solid #5d4343; }"+
+			" table thead tr {  background: #9d9d9d; }"+
+			" table thead th {  font-size: 20px;  font-weight: bold;  color: #000;  text-align: left; }"+
+			" table tfoot {  font-size: 13px;  font-weight: bold;  color: #FFFFFF;  background: #CE3CFF;  background: -moz-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: -webkit-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: linear-gradient(to bottom, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  border-top: 5px solid #792396; }"+
+			" table tfoot td {  font-size: 13px; }"+
+			" table tfoot .links {  text-align: right; }"+
+			" table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; }"+
+			" table tbody tr:hover, table tbody td:hover {  background: #005107; }"+
+			menuCSS+
+			" .menu { position: inherit; }</style>"+
+			"</style>"+
+			"<script>"+gotoURL+"</script>"+
+			"<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>"+
+  		"<script src='https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js'></script>"+
+			"</head>"+
+			"<body>"+
+			menu+
+			"<div id='version-table'>"+
+			"</div>"+
+			"<script>"+
+			"var myPlot = document.getElementById('version-table');"+
+			"var layout = {"+
+	      "paper_bgcolor:'#000',"+
+				"grid: {rows: 1, columns: 3},"+
+				"title: {"+
+			    "text:'Top 10 Versions                    "+
+					"                 "+
+					"Top 10 Countries                   "+
+					"                 "+
+					"Top 10 ISP',"+
+			    "font: {"+
+						"color: '#696969',"+
+			      "size: 24"+
+			    "},"+
+			    "xref: 'paper'"+
+			  "}"+
+			"};"+
+			"var data = [{"+
+				"header: {"+
+			    "values: [['Version'],['Count'],['Percent']],"+
+					"align: 'center',"+
+			    "line: {width: 1, color: 'black'},"+
+			    "fill: {color: '#333'},"+
+			    "font: {family: 'Arial', size: 14, color: '#696969'}"+
+			  "},"+
+				"cells: {"+
+			    `values: [[${subversionListKeys}],[${subversionListValues}],[${subversionListPercents}]],`+
+			    "align: 'center',"+
+			    "line: {color: 'black', width: 1},"+
+					"fill: {color: '#696969'},"+
+			    "font: {family: 'Arial', size: 13, color: ['#333']}"+
+			  "},"+
+			  "type: 'table',"+
+				"columnwidth: [20,5,5],"+
+				"legendgroup: 'group1',"+
+				"domain: {"+
+			    "row: 0,"+
+			    "column: 0"+
+			  "}"+
+			"},"+
+			"{"+
+			"header: {"+
+				"values: [['Countries'],['Count'],['Percent']],"+
+				"align: 'center',"+
+				"line: {width: 1, color: 'black'},"+
+				"fill: {color: '#333'},"+
+				"font: {family: 'Arial', size: 14, color: '#696969'}"+
+			"},"+
+			"cells: {"+
+				`values: [[${countryListKeys.slice(0,10)}],[${countryListValues.slice(0,10)}],[${countryListPercents.slice(0,10)}]],`+
+				"align: ['center','center','center'],"+
+				"line: {color: 'black', width: 1},"+
+				"fill: {color: '#696969'},"+
+				"font: {family: 'Arial', size: 13, color: ['#333']}"+
+			"},"+
+			  "type: 'table',"+
+				"columnwidth: [10,5,5],"+
+				"legendgroup: 'group2',"+
+				"domain: {"+
+			    "row: 0,"+
+			    "column: 1"+
+			  "}"+
+			"},"+
+			"{"+
+				"header: {"+
+					"values: [['ISP'],['Count'],['Percent']],"+
+					"align: 'center',"+
+					"line: {width: 1, color: 'black'},"+
+					"fill: {color: '#333'},"+
+					"font: {family: 'Arial', size: 14, color: '#696969'}"+
+				"},"+
+				"cells: {"+
+					`values: [[${ispListKeys.slice(0,10)}],[${ispListValues.slice(0,10)}],[${ispListPercents.slice(0,10)}]],`+
+					"align: 'center',"+
+					"line: {color: 'black', width: 1},"+
+					"fill: {color: '#696969'},"+
+					"font: {family: 'Arial', size: 13, color: ['#333']}"+
+				"},"+
+			  "type: 'table',"+
+				"columnwidth: [15,3,3],"+
+				"legendgroup: 'group3',"+
+				"domain: {"+
+			    "row: 0,"+
+			    "column: 2"+
+			  "}"+
+			"}];"+
+			"Plotly.newPlot(myPlot, data, layout, {responsive: true,displaylogo: false});"+
+			"</script>"+
+			"</body>";
+		res.send(
+			html
+		);
+	});
+});
+
+app.get('/api', function(req, res) {
+	let hours = req.query.hours;
+	if (!isFinite(hours) || hours > 10) hours = 10;
+	let host2lastconnection = {};
+	let host2active = {};
+	recentConnections(1000*60*60*hours)
+	.on('data', function(connection) {
+		let key = connection.host+":"+connection.port;
+		if (host2lastconnection[key] === undefined || connection.connectTime > host2lastconnection[key].connectTime)  {
+			host2lastconnection[key] = connection;
+		}
+	})
+	.on('close', function() {
+		let hostList = Object.keys(host2lastconnection).filter(host => host2lastconnection[host].success);
+		let hostData = Object.values(host2lastconnection).filter(obj => {return obj.success === true});
+		let hostCount = hostList.length;
+		let subversion = [];
+		let country = [];
+		let isp = [];
+		hostData = hostData.map(obj => ({
+			subversion: obj.subversion,
+			country: obj.country,
+			isp: obj.isp
+		}));
+		for(i=0;i<hostCount;i++){
+			subversion.push(hostData[i].subversion.split(":").pop().match(/[+-]?\d+(?:\.\d+)(?:\.\d+)?/g).pop());
+			country.push(hostData[i].country);
+			isp.push(hostData[i].isp);
+		}
+		subversion = subversion.sort( (a, b) => b.localeCompare(a, undefined, { numeric:true }) );
+		country = country.sort();
+		isp = isp.sort();
+		let subversionCount = {};
+		let subversionList = {}
+		let countryCount = {};
+		let countryList = {};
+		let ispCount = {};
+		let ispList = {};
+		let allinfo = {
+			count: {
+				subversion: 0,
+				country: 0,
+				isp: 0
+			}
+		};
+    subversion.forEach(function(i) {
+			 subversionCount[i] = (subversionCount[i]||0) + 1;
+			 subversionList[i] = {};
+			 subversionList[i].count = (subversionCount[i]||0) + 1;
+		});
+		country.forEach(function(i) {
+			 countryCount[i] = (countryCount[i]||0) + 1;
+			 countryList[i] = {};
+			 countryList[i].count = (countryCount[i]||0) + 1;
+		});
+    isp.forEach(function(i) {
+			 ispCount[i] = (ispCount[i]||0) + 1;
+			 ispList[i] = {};
+			 ispList[i].count = (ispCount[i]||0) + 1;
+		 });
+		 let subversionListSorted = {};
+		 let countryListSorted = {};
+		 let ispListSorted = {};
+		 Object.keys(subversionList)
+		 		.map(key => ({ key: key, value: subversionList[key] }))
+		 		.sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				.forEach((sortedData) => subversionListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					.replace('{"key":"'+sortedData.key+'"','')
+					.replace(',"value":','')
+					.slice(0, -1)
+				)));
+			Object.keys(countryList)
+				 .map(key => ({ key: key, value: countryList[key] }))
+				 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				 .forEach((sortedData) => countryListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					 .replace('{"key":"'+sortedData.key+'"','')
+					 .replace(',"value":','')
+					 .slice(0, -1)
+				 )));
+			 Object.keys(ispList)
+	 			 .map(key => ({ key: key, value: ispList[key] }))
+	 			 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+	 			 .forEach((sortedData) => ispListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+	 				 .replace('{"key":"'+sortedData.key+'"','')
+	 				 .replace(',"value":','')
+	 				 .slice(0, -1)
+	 			 )));
+		for (i in subversionCount){
+			allinfo.count.subversion = allinfo.count.subversion + subversionCount[i]
+		}
+		for (i in countryCount){
+			allinfo.count.country = allinfo.count.country + countryCount[i]
+		}
+		for (i in ispCount){
+			allinfo.count.isp = allinfo.count.isp + ispCount[i]
+		}
+		for (i in subversionListSorted) {
+				let fixed = (subversionListSorted[i].count / allinfo.count.subversion) * 100;
+				fixed = fixed.toFixed(2)
+				subversionListSorted[i].percent = fixed;
+		};
+		for (i in countryListSorted) {
+				let fixed = (countryListSorted[i].count / allinfo.count.country) * 100;
+				fixed = fixed.toFixed(2)
+				countryListSorted[i].percent = fixed;
+		};
+		for (i in ispListSorted) {
+				let fixed = (ispListSorted[i].count / allinfo.count.isp) * 100;
+				fixed = fixed.toFixed(2)
+				ispListSorted[i].percent = fixed;
+		};
+		let subversionListKeys = [];
+		let subversionListValues = [];
+		let subversionListPercents = [];
+		let countryListKeys = [];
+		let countryListValues = [];
+		let countryListPercents = [];
+		let ispListKeys = [];
+		let ispListValues = [];
+		let ispListPercents = [];
+		for (i in subversionListSorted){
+				subversionListKeys.push('"'+i+'"')
+				subversionListValues.push(subversionListSorted[i]['count'])
+				subversionListPercents.push(subversionListSorted[i]['percent'])
+		}
+		for (i in countryListSorted){
+			countryListKeys.push('"'+i+'"')
+			countryListValues.push(countryListSorted[i]['count'])
+			countryListPercents.push(countryListSorted[i]['percent'])
+		}
+		for (i in ispListSorted){
+			ispListKeys.push('"'+i+'"')
+			ispListValues.push(ispListSorted[i]['count'])
+			ispListPercents.push(ispListSorted[i]['percent'])
+		}
+		allinfo.json = {};
+		allinfo.plotly = {};
+		allinfo.plotly.subversion = {};
+		allinfo.plotly.country = {};
+		allinfo.plotly.isp = {};
+		allinfo.json.subversion = subversionListSorted;
+		allinfo.json.country = countryListSorted;
+		allinfo.json.isp = ispListSorted;
+		allinfo.plotly.subversion.keys = subversionListKeys;
+		allinfo.plotly.country.keys = countryListKeys;
+		allinfo.plotly.isp.keys = ispListKeys;
+		allinfo.plotly.subversion.values = subversionListValues;
+		allinfo.plotly.country.values = countryListValues;
+		allinfo.plotly.isp.values = ispListValues;
+		allinfo.plotly.subversion.percents = subversionListPercents;
+		allinfo.plotly.country.percents = countryListPercents;
+		allinfo.plotly.isp.percents = ispListPercents;
+		res.set('Content-Type', 'application/json');
+		console.log(allinfo.plotly.subversion.keys);
+		res.send(allinfo);
+	});
+});
 
 app.get('/node_count', function (req, res) {
   let hours = req.query.hours;
@@ -256,22 +1218,23 @@ app.get('/node_list', function (req, res) {
 	let css = "<head><script>"+gotoURL+"</script><style>body {  background: #000; } table {  text-align: left;  margin: auto;  /*! border: 3px solid #9d9d9d; */ } table td, table th {  border: 3px solid #9d9d9d;  padding: 5px 2px; } table tbody td {  color: #9D9D9D; } table tr:nth-child(even) {  background: black;  border: 3px solid #9d9d9d; } table tbody tr {  background: #000;  border: 3px solid #5d4343; } table thead tr {  background: #9d9d9d; } table thead th {  font-size: 20px;  font-weight: bold;  color: #000;  text-align: left; } table tfoot {  font-size: 13px;  font-weight: bold;  color: #FFFFFF;  background: #CE3CFF;  background: -moz-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: -webkit-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: linear-gradient(to bottom, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  border-top: 5px solid #792396; } table tfoot td {  font-size: 13px; } table tfoot .links {  text-align: right; } table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; } table tbody tr:hover, table tbody td:hover {  background: #005107; }"+menuCSS+".menu{position:inherit}</style></head>"
 	let hostList = Object.values(host2lastconnection);
 	hostList = hostList.filter(obj => {return obj.success === true});
-	hostList = hostList.map(obj => ({ 
+	hostList = hostList.map(obj => ({
 		host: obj.host + ':' + obj.port,
-		provider: obj.isp,
 		version: obj.version,
-		Height: obj.bestHeight,
+		height: obj.bestHeight,
 		lat: obj.lat,
 		long: obj.long,
-		location: obj.location
+		location: obj.location,
+		provider: obj.isp
 	}));
 	hostCount = hostList.length;
 	hostList = hostList.sort(function(a, b){return b.version - a.version});
+		console.log(hostList)
 	hostList = tableify(hostList).replace('host','host  ('+hostCount+')');
     res.send(
-	  css +
-	  menu+
-      hostList
+		  css+
+		  menu+
+	    hostList
     );
   });
 });
@@ -287,9 +1250,9 @@ app.get('/connections/:host_ip.csv', function(req, res) {
 	readableDate = (readableDate.getMonth() + 1) +
 	"/" + readableDate.getDate() +
 	"/" + readableDate.getFullYear() +
-	" " + readableDate.getHours() + 
+	" " + readableDate.getHours() +
 	":" + readableDate.getMinutes();
-    let columns = [readableDate, 
+    let columns = [readableDate,
       connection.host,
       connection.port];
     if (connection.success !== undefined) {
@@ -299,7 +1262,7 @@ app.get('/connections/:host_ip.csv', function(req, res) {
       columns.push(connection.services);
     }
     if (result.length > 0) result += "\n";
-    result += columns.join(delimiter);  
+    result += columns.join(delimiter);
   })
   .on('close', function() {
     res.set('Content-Type', 'text/csv');
@@ -308,8 +1271,8 @@ app.get('/connections/:host_ip.csv', function(req, res) {
 });
 
 app.get('/debug', function(req, res) {
-  res.set('Content-Type', 'application/json');
-  res.send(data);
+      res.set('Content-Type', 'application/json');
+	  res.send(data);
 });
 
 app.get('/map', function(req, res) {
@@ -328,7 +1291,7 @@ app.get('/map', function(req, res) {
 	let hostList = Object.values(host2lastconnection);
 	hostList = hostList.filter(obj => {return obj.success === true});
 	hostCount = hostList.length;
-	hostList = hostList.map(obj => ({ 
+	hostList = hostList.map(obj => ({
 		host: obj.host,
 		port: obj.port,
 		version: obj.version,
@@ -367,7 +1330,7 @@ app.get('/map', function(req, res) {
 		if (countryName == "United States") {countryName = "United States of America"}
 		countryCode = countries.getAlpha3Code(countryName,'en');
 		if (countryName == "United States of America") {countryName = "United States"}
-		optionsData.push(countryCode+": { fillKey: 'active', count: "+count[countryName]+" }");		
+		optionsData.push(countryCode+": { fillKey: 'active', count: "+count[countryName]+" }");
 	}
 	let popupBubbles = "map.bubbles(["+
 	  peerInfo +
@@ -479,8 +1442,8 @@ function add_connection2data(connection) {
 
   if (data.hostdata.host2active[host] === undefined) {
     data.hostdata.host2active[host] = new BitSet();
-  }  
-  data.hostdata.host2active[host].set(hours_ago, connection.success ? 1 : 0); 
+  }
+  data.hostdata.host2active[host].set(hours_ago, connection.success ? 1 : 0);
   if (connection.success && (data.hostdata.host2lastconnection[host] === undefined || data.hostdata.host2lastconnection[host].connectedTime < connection.connectedTime)) {
     data.hostdata.host2lastconnection[host] = connection;
   }
@@ -491,7 +1454,7 @@ function reindexConnectionTimes() {
   return new Promise(function(resolve, reject) {
     let ops = [];
     db.createReadStream({
-      gt: connection_prefix, 
+      gt: connection_prefix,
       lt: connection_prefix+"z"
     })
     .on('data', function (data) {
@@ -505,7 +1468,7 @@ function reindexConnectionTimes() {
         ops = [];
       }
       ops.push({type: 'put', key: connection_by_time_prefix+integer2LexString(connection.connectTime)+"/"+connectionId, value: connection});
-    })  
+    })
     .on('error', function (err) {
       console.log("GOT db error2", err);
     })
@@ -517,7 +1480,7 @@ function reindexConnectionTimes() {
     })
     .on('end', function () {
     });
-  });  
+  });
 }
 
 function reindexConnectionIpAddresses() {
@@ -525,7 +1488,7 @@ function reindexConnectionIpAddresses() {
   return new Promise(function(resolve, reject) {
     let ops = [];
     db.createReadStream({
-      gt: connection_prefix, 
+      gt: connection_prefix,
       lt: connection_prefix+"z"
     })
     .on('data', function (data) {
@@ -561,7 +1524,7 @@ function loadDataFromDb() {
     recentConnections(1000*60*60*24*30)
     .on('data', function(connection) {
       add_connection2data(connection);
-    })  
+    })
     .on('close', function() {
       resolve();
     });
@@ -624,7 +1587,7 @@ function connectionsByHost(host) {
     'end': function() {}
   }
   db.createValueStream({
-    gt: connection_by_ip_prefix+host+"/", 
+    gt: connection_by_ip_prefix+host+"/",
     lt: connection_by_ip_prefix+host+"/"+"z",
   })
   .on('data', function (data) {
@@ -646,7 +1609,7 @@ function connectionsByHost(host) {
       return this;
     }
   }
-}  
+}
 
 function connectionsBetween(from, to) {
   let event2callback = {
@@ -657,7 +1620,7 @@ function connectionsBetween(from, to) {
   }
 
   db.createValueStream({
-    gt: connection_by_time_prefix+integer2LexString(from), 
+    gt: connection_by_time_prefix+integer2LexString(from),
     lt: connection_by_time_prefix+integer2LexString(to)
   })
   .on('data', function (data) {
@@ -776,7 +1739,7 @@ function createQueue(callback) {
     result.sort((a, b) => a.nextConnection-b.nextConnection);
     callback(result);
   });
-}  
+}
 
 
 function saveConnection(connection, connectionId) {
@@ -803,7 +1766,7 @@ function connectToPeers() {
   let status = "queue: "+ queue.length+", failed_connections_queue: "+ failed_connections_queue.length+", concurrent_connections: "+concurrent_connections;
   if (queue.length > 0 && queue[0].nextConnection > currentTime) {
     status += ", next action in " + Math.floor((queue[0].nextConnection-currentTime)/1000) + " seconds.";
-  }  
+  }
   if (status !== status_string) {
     console.log(status);
     status_string = status;
@@ -811,8 +1774,8 @@ function connectToPeers() {
 
   if (queue.length > 0) {
     let nextActionTime = currentTime-lastConnectTime > 1000*60*1 ? 0 : queue[0].nextConnection;
-    if (nextActionTime <= currentTime 
-      && concurrent_connections < max_concurrent_connections 
+    if (nextActionTime <= currentTime
+      && concurrent_connections < max_concurrent_connections
       && failed_connections_queue.length < max_failed_connections_per_minute) {
       let e = queue.shift();
       let host = e.host;
@@ -829,9 +1792,9 @@ function connectToPeers() {
       let connectionSaved = false;
 
       let connection = {
-        host: peer.host, 
+        host: peer.host,
         port: peer.port,
-        success:false, 
+        success:false,
         connectTime: connectTime
       };
 
@@ -845,7 +1808,7 @@ function connectToPeers() {
       });*/
 
       let connectTimeout = setTimeout(function() {
-        peer.disconnect(); 
+        peer.disconnect();
       }, connect_timeout);
 
       let handshakeTimeout;
@@ -854,7 +1817,7 @@ function connectToPeers() {
       peer.on('connect', function(e) {
         clearTimeout(connectTimeout);
         handshakeTimeout = setTimeout(function() {
-          peer.disconnect(); 
+          peer.disconnect();
         }, handshake_timeout);
       });
 
@@ -880,8 +1843,7 @@ function connectToPeers() {
 		let geo = geoip.lookup(peer.host);
 		let ISP = asnLookup.get(peer.host)
 		let city, region, country, regionName, lat, long;
-		if (!ISP) ISP = undefined;
-		ISP = ISP.autonomous_system_organization;
+		if (!ISP) ISP = undefined; else ISP = ISP.autonomous_system_organization;
 		if (geo) {
 			city = geo.city ? geo.city : undefined
 			region = geo.region ? geo.region : undefined
@@ -897,7 +1859,7 @@ function connectToPeers() {
 		}
 		if (country){
 			if (country == 'United States of America') {
-				country = "United States" 
+				country = "United States"
 				}
 			regionName = regions(country);
 			if (regionName) {
@@ -920,13 +1882,13 @@ function connectToPeers() {
 		let connectedTime = (new Date()).getTime();
         connection = {
           host: peer.host,
-          port: peer.port, 
-          version: peer.version, 
-          subversion: peer.subversion, 
-          bestHeight: peer.bestHeight, 
+          port: peer.port,
+          version: peer.version,
+          subversion: peer.subversion,
+          bestHeight: peer.bestHeight,
           services: peer.services,
-          success:true, 
-          connectedTime: connectedTime, 
+          success:true,
+          connectedTime: connectedTime,
           connectTime: connectTime,
 		  lat: lat,
 		  long: long,
@@ -936,30 +1898,29 @@ function connectToPeers() {
         };
         if (!connectionSaved) {
           connectionSaved = true;
-		  data.active_host++;
 		  saveConnection(connection, connectionId);
         }
         /*db.put(connection_prefix+connectionId, connectionSuccess, function (err) {
           if (err) return console.log('Ooops!', err) // some kind of I/O error
         });*/
 
-        
+
         let getaddr = messages.GetAddr();
         peer.sendMessage(getaddr);
 
         addrTimeout = setTimeout(function() {
           console.log("No addr message withing "+stay_connected_time/1000+" seconds");
-          peer.disconnect(); 
+          peer.disconnect();
         }, stay_connected_time);
       });
-      
+
       peer.on('error', function(err) {
         clearTimeout(handshakeTimeout);
         clearTimeout(connectTimeout);
         console.log("peer error", err);
         peer.disconnect();
       });
-      
+
       peer.on('disconnect', function() {
         clearTimeout(handshakeTimeout);
         clearTimeout(connectTimeout);
@@ -973,7 +1934,7 @@ function connectToPeers() {
           console.log('connection closed to '+peer.host+":"+peer.port);
         }
       });
-      
+
       peer.on('addr', function(message) {
         console.log(message.addresses.length+" addresses received from "+peer.host+":"+peer.port);
         let addrTimeStamp = (new Date()).getTime();
@@ -997,7 +1958,7 @@ function connectToPeers() {
 
           let key = host2lastaddr_prefix+address.ip.v4+":"+address.port;
           db.get(key, function(err, value) {
-            
+
             const ops = [];
             if (addr_db_ttl === undefined || addr_db_ttl === 0 || Math.max(0, addrTimeStamp-address.time.getTime()) < addr_db_ttl) {
               ops.push({ type: 'put', key: addr_prefix+addressId, value: obj });
@@ -1006,7 +1967,7 @@ function connectToPeers() {
 
             if ((err && err.notFound) || address.time.getTime() > value) {
               ops.push({type: 'put', key: key, value: address.time.getTime()});
-            }  
+            }
             if (ops.length > 0) {
               db.batch(ops, function (err) {
                 if (err) return console.log('Ooops!', err);
@@ -1021,7 +1982,7 @@ function connectToPeers() {
         }
       });
       peer.connect();
-      
+
     }
   }
   if (queue.length < 250 && currentTime-lastRefreshTime > 1000*15) {
@@ -1047,10 +2008,10 @@ function refreshQueue() {
       seedNodes.forEach(host => {
 		  queue.push({host:host, port: ravencore_lib.Networks.get(network_name).port, nextConnection:0});
 	  });
-	  
+
     } else {
       queue = data;
-    }  
+    }
     console.log("Queue refreshed. New size: "+queue.length);
     paused = false;
     lastRefreshTime = (new Date()).getTime();
@@ -1063,8 +2024,8 @@ function removeOldAddr() {
   let currentTime = (new Date()).getTime();
   let removeArr = [];
   db.createReadStream({
-    gt:addr_by_time_prefix, 
-    lt:addr_by_time_prefix+integer2LexString(currentTime-addr_db_ttl), 
+    gt:addr_by_time_prefix,
+    lt:addr_by_time_prefix+integer2LexString(currentTime-addr_db_ttl),
     valueEncoding: 'utf8',
     limit: 100000
   })
@@ -1090,7 +2051,13 @@ function removeOldAddr() {
   })
   .on('end', function () {
   });
+}
 
+function getTime(timestamp){
+var date = new Date(timestamp*1000);
+date = date.toISOString().match(/(\d{4}\-\d{2}\-\d{2})T(\d{2}:\d{2}:\d{2})/)
+date = date[1] + ' ' + date[2]
+return date;
 }
 
 }
