@@ -85,15 +85,39 @@ let menu = '<nav class="menu">'+
   'Kaaawww Crawler'+
   '<br>'+
   'crawling the ravencoin network for available nodes'+
-  '<ul class="menuLinkList">'+
-    '<li class="menuLinks">'+
-      '<a class="menuLink" href="javascript:gotoURL(\'map\')">Map</a>'+
-    '</li>'+
-	'<li class="menuDivider">|</li>'+
-    '<li class="menuLinks">'+
-      '<a class="menuLink" href="javascript:gotoURL(\'node_list\')">List</a>'+
-    '</li>'+
-  '</ul>'+
+	'<ul class="menuLinkList">'+
+	  '<li class="menuLinks">'+
+	    '<a class="menuLink" href="javascript:gotoURL(\'\')">Home</a>'+
+	  '</li>'+
+	  '<li class="menuDivider">|</li>'+
+	  '<li class="menuLinks">'+
+	    '<a class="menuLink" href="javascript:gotoURL(\'map\')">Map</a>'+
+	  '</li>'+
+	  '<li class="menuDivider">|</li>'+
+	  '<li class="menuLinks">'+
+	    '<a class="menuLink" href="javascript:gotoURL(\'node_list\')">List</a>'+
+	  '</li>'+
+	  '<li class="menuDivider">|</li>'+
+	  '<li class="menuLinks">'+
+	   '<a class="menuLink" href="javascript:gotoURL(\'charts/table\')">Table</a>'+
+	  '</li>'+
+	  '<li class="menuDivider">|</li>'+
+	  '<li class="menuLinks">'+
+	    '<a class="menuLink" href="javascript:gotoURL(\'charts/pie\')">Pie</a>'+
+	  '</li>'+
+	  '<li class="menuDivider">|</li>'+
+	  '<li class="menuLinks">'+
+	    '<a class="menuLink" href="javascript:gotoURL(\'charts/bar-v\')">Bar-v</a>'+
+	  '</li>'+
+	  '<li class="menuDivider">|</li>'+
+	  '<li class="menuLinks">'+
+	    '<a class="menuLink" href="javascript:gotoURL(\'charts/bar-h\')">Bar-h</a>'+
+	  '</li>'+
+	  '<li class="menuDivider">|</li>'+
+	  '<li class="menuLinks">'+
+	    '<a class="menuLink" href="javascript:gotoURL(\'api\')">API</a>'+
+	  '</li>'+
+	'</ul>'+
 '</nav>';
 
 let menuCSS = ".menu {"+
@@ -261,7 +285,7 @@ app.get('/', function (req, res) {
   });
 });
 
-app.get('/charts/bar', function(req, res) {
+app.get('/charts/bar-v', function(req, res) {
 	let hours = req.query.hours;
 	if (!isFinite(hours) || hours > 10) hours = 10;
 	let host2lastconnection = {};
@@ -409,7 +433,7 @@ app.get('/charts/bar', function(req, res) {
 			" table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; }"+
 			" table tbody tr:hover, table tbody td:hover {  background: #005107; }"+
 			menuCSS+
-			" .menu { position: inherit; }</style>"+
+			" .menu { position: inherit; }"+
 			"</style>"+
 			"<script>"+gotoURL+"</script>"+
 			"<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>"+
@@ -417,10 +441,10 @@ app.get('/charts/bar', function(req, res) {
 			"</head>"+
 			"<body>"+
 			menu+
-			"<div id='version-table'>"+
+			"<div id='bar-chart'>"+
 			"</div>"+
 			"<script>"+
-			"var myPlot = document.getElementById('version-table');"+
+			"var myPlot = document.getElementById('bar-chart');"+
 			"var layout = {"+
 			  "showlegend: true,"+
 			  "legend: {orientation: 'h',x:0,y:-0.5},"+
@@ -497,6 +521,286 @@ app.get('/charts/bar', function(req, res) {
 			"Plotly.newPlot(myPlot, data, layout, {responsive: true,displaylogo: false,"+
 			"modeBarButtonsToRemove: ['zoom2d','pan2d','select2d','lasso2d','zoomIn2d','zoomOut2d','autoScale2d','toggleSpikelines','hoverCompareCartesian','hoverClosestCartesian']});"+
 			"myPlot.on('plotly_legendclick',function() { return false; });"+
+			"</script>"+
+			"</body>";
+		res.send(
+			html
+		);
+	});
+});
+
+app.get('/charts/bar-h', function(req, res) {
+	let hours = req.query.hours;
+	if (!isFinite(hours) || hours > 10) hours = 10;
+	let host2lastconnection = {};
+	let host2active = {};
+	recentConnections(1000*60*60*hours)
+	.on('data', function(connection) {
+		let key = connection.host+":"+connection.port;
+		if (host2lastconnection[key] === undefined || connection.connectTime > host2lastconnection[key].connectTime)  {
+			host2lastconnection[key] = connection;
+		}
+	})
+	.on('close', function() {
+		let hostList = Object.keys(host2lastconnection).filter(host => host2lastconnection[host].success);
+		let hostData = Object.values(host2lastconnection).filter(obj => {return obj.success === true});
+		let hostCount = hostList.length;
+		let subversion = [];
+		let country = [];
+		let isp = [];
+		hostData = hostData.map(obj => ({
+			subversion: obj.subversion,
+			country: obj.country,
+			isp: obj.isp
+		}));
+		for(i=0;i<hostCount;i++){
+			subversion.push(hostData[i].subversion.split(":").pop().match(/[+-]?\d+(?:\.\d+)(?:\.\d+)?/g).pop());
+			country.push(hostData[i].country);
+			isp.push(hostData[i].isp);
+		}
+		subversion = subversion.sort( (a, b) => b.localeCompare(a, undefined, { numeric:true }) );
+		country = country.sort();
+		isp = isp.sort();
+		let subversionCount = {};
+		let subversionList = {}
+		let countryCount = {};
+		let countryList = {};
+		let ispCount = {};
+		let ispList = {};
+		let allinfo = {
+			count: {
+				subversion: 0,
+				country: 0,
+				isp: 0
+			}
+		};
+    subversion.forEach(function(i) {
+			 subversionCount[i] = (subversionCount[i]||0) + 1;
+			 subversionList[i] = {};
+			 subversionList[i].count = (subversionCount[i]||0) + 1;
+		});
+		country.forEach(function(i) {
+			 countryCount[i] = (countryCount[i]||0) + 1;
+			 countryList[i] = {};
+			 countryList[i].count = (countryCount[i]||0) + 1;
+		});
+    isp.forEach(function(i) {
+			 ispCount[i] = (ispCount[i]||0) + 1;
+			 ispList[i] = {};
+			 ispList[i].count = (ispCount[i]||0) + 1;
+		 });
+		 let subversionListSorted = {};
+		 let countryListSorted = {};
+		 let ispListSorted = {};
+		 Object.keys(subversionList)
+		 		.map(key => ({ key: key, value: subversionList[key] }))
+		 		.sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				.forEach((sortedData) => subversionListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					.replace('{"key":"'+sortedData.key+'"','')
+					.replace(',"value":','')
+					.slice(0, -1)
+				)));
+			Object.keys(countryList)
+				 .map(key => ({ key: key, value: countryList[key] }))
+				 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+				 .forEach((sortedData) => countryListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+					 .replace('{"key":"'+sortedData.key+'"','')
+					 .replace(',"value":','')
+					 .slice(0, -1)
+				 )));
+			 Object.keys(ispList)
+	 			 .map(key => ({ key: key, value: ispList[key] }))
+	 			 .sort((first, second) => (first.value.count > second.value.count) ? -1 : (first.value.count < second.value.count) ? 1 : 0 )
+	 			 .forEach((sortedData) => ispListSorted[sortedData.key] = (JSON.parse(JSON.stringify(sortedData)
+	 				 .replace('{"key":"'+sortedData.key+'"','')
+	 				 .replace(',"value":','')
+	 				 .slice(0, -1)
+	 			 )));
+		for (i in subversionCount){
+			allinfo.count.subversion = allinfo.count.subversion + subversionCount[i]
+		}
+		for (i in countryCount){
+			allinfo.count.country = allinfo.count.country + countryCount[i]
+		}
+		for (i in ispCount){
+			allinfo.count.isp = allinfo.count.isp + ispCount[i]
+		}
+		for (i in subversionListSorted) {
+				let fixed = (subversionListSorted[i].count / allinfo.count.subversion) * 100;
+				fixed = fixed.toFixed(2)
+				subversionListSorted[i].percent = fixed;
+		};
+		for (i in countryListSorted) {
+				let fixed = (countryListSorted[i].count / allinfo.count.country) * 100;
+				fixed = fixed.toFixed(2)
+				countryListSorted[i].percent = fixed;
+		};
+		for (i in ispListSorted) {
+				let fixed = (ispListSorted[i].count / allinfo.count.isp) * 100;
+				fixed = fixed.toFixed(2)
+				ispListSorted[i].percent = fixed;
+		};
+		let subversionListKeys = [];
+		let subversionListValues = [];
+		let countryListKeys = [];
+		let countryListValues = [];
+		let ispListKeys = [];
+		let ispListValues = [];
+		for (i in subversionListSorted){
+				subversionListKeys.push('"'+i+'"')
+				subversionListValues.push(subversionListSorted[i]['count'])
+		}
+		for (i in countryListSorted){
+			countryListKeys.push('"'+i+'"')
+			countryListValues.push(countryListSorted[i]['count'])
+		}
+		for (i in ispListSorted){
+			ispListKeys.push('"'+i+'"')
+			ispListValues.push(ispListSorted[i]['count'])
+		}
+		allinfo.subversion = subversionListSorted;
+		allinfo.country = countryListSorted;
+		allinfo.isp = ispListSorted;
+		let html = "<head>"+
+			"<style>"+
+			"body {  background: #000; }"+
+			menuCSS+
+			" .menu { position: inherit; }"+
+			"</style>"+
+			"<script>"+gotoURL+"</script>"+
+			"<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>"+
+  		"<script src='https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js'></script>"+
+			"</head>"+
+			"<body>"+
+			menu+
+			"<div id='version-chart'>"+
+			"</div>"+
+			"<div id='country-chart'>"+
+			"</div>"+
+			"<div id='isp-chart'>"+
+			"</div>"+
+			"<script>"+
+			"var myPlot1 = document.getElementById('version-chart');"+
+			"var myPlot2 = document.getElementById('country-chart');"+
+			"var myPlot3 = document.getElementById('isp-chart');"+
+			"var layout1 = {"+
+				"title: 'Top 10<br>Versions',"+
+			  "showlegend: false,"+
+			  "legend: {orientation: 'h',x:0,y:-0.5},"+
+	      "plot_bgcolor:'#000',"+
+				"constraintext: 'inside',"+
+	      "paper_bgcolor:'#000',"+
+				"xaxis: {"+
+			    "domain: [0.25, 0.75],"+
+			    "anchor: 'x'"+
+			  "}"+
+			"};"+
+			"var layout2 = {"+
+				"title: 'Top 10<br>Countries',"+
+			  "showlegend: false,"+
+			  "legend: {orientation: 'h',x:0,y:-0.5},"+
+	      "plot_bgcolor:'#000',"+
+				"constraintext: 'inside',"+
+	      "paper_bgcolor:'#000',"+
+				"xaxis: {"+
+			    "domain: [0.25, 0.75],"+
+			    "anchor: 'x'"+
+			  "}"+
+			"};"+
+			"var layout3 = {"+
+				"title: 'Top 10<br>ISP',"+
+			  "showlegend: false,"+
+			  "legend: {orientation: 'h',x:0,y:-0.5},"+
+	      "plot_bgcolor:'#000',"+
+				"constraintext: 'inside',"+
+	      "paper_bgcolor:'#000',"+
+				"xaxis: {"+
+			    "domain: [0.25, 0.75],"+
+			    "anchor: 'x'"+
+			  "}"+
+			"};"+
+			"var data = [{"+
+			  `x: [${subversionListValues}],`+
+			  `y: [${subversionListKeys}],`+
+			  "type: 'bar',"+
+				"legendgroup: 'group1',"+
+				"xaxis: 'x',"+
+  			"yaxis: 'y',"+
+				"orientation: 'h',"+
+				"hoverinfo: 'none',"+
+				"textposition: 'auto',"+
+				`text: [${subversionListValues}].map(String),`+
+				"name: 'Subversions',"+
+				"marker: {"+
+			    "color: 'rgba(69, 90, 210, .7)',"+
+			    "opacity: 0.6,"+
+			    "line: {"+
+			      "color: 'rgb(165, 0, 0)',"+
+			      "width: 1.5"+
+			    "}"+
+			  "},"+
+				"textfont: {color:'#696969',size:20},"+
+				"outsidetextfont : {color:'#696969',size:20},"+
+				"insidetextfont: {color:'#696969',size:20}"+
+			"},"+
+			"{"+
+			  `x: [${countryListValues.slice(0,10)}],`+
+			  `y: [${countryListKeys.slice(0,10)}],`+
+			  "type: 'bar',"+
+				"legendgroup: 'group2',"+
+				"xaxis: 'x',"+
+  			"yaxis: 'y',"+
+				"orientation: 'h',"+
+				"hoverinfo: 'none',"+
+				"textposition: 'auto',"+
+				`text: [${countryListValues}].map(String),`+
+				"name: 'Countries',"+
+				"marker: {"+
+			    "color: 'rgba(107, 114, 113, .7)',"+
+			    "opacity: 0.6,"+
+			    "line: {"+
+			      "color: 'rgb(165, 0, 0)',"+
+			      "width: 1.5"+
+			    "}"+
+			  "},"+
+				"textfont: {color:'#696969'},"+
+				"outsidetextfont : {color:'#696969'},"+
+				"insidetextfont: {color:'#696969'}"+
+			"},"+
+			"{"+
+			  `x: [${ispListValues.slice(0,10)}],`+
+			  `y: [${ispListKeys.slice(0,10)}],`+
+			  "type: 'bar',"+
+				"xaxis: 'x',"+
+  			"yaxis: 'y',"+
+				"legendgroup: 'group3',"+
+				"orientation: 'h',"+
+				"hoverinfo: 'none',"+
+				"textposition: 'auto',"+
+				`text: [${ispListValues}].map(String),`+
+				"name: 'ISP',"+
+				"marker: {"+
+			    "color: 'rgba(165, 69, 209, .7)',"+//69, 90, 210
+			    "opacity: 0.6,"+
+			    "line: {"+
+			      "color: 'rgb(165, 0, 0)',"+
+			      "width: 1.5"+
+			    "}"+
+			  "},"+
+				"textfont: {color:'#696969'},"+
+				"outsidetextfont : {color:'#696969'},"+
+				"insidetextfont: {color:'#696969'}"+
+			"}];"+
+			"console.log(data[0]);"+
+			"Plotly.newPlot(myPlot1, [data[0]], layout1, {responsive:true,displaylogo: false,"+
+			"modeBarButtonsToRemove: ['zoom2d','pan2d','select2d','lasso2d','zoomIn2d','zoomOut2d','autoScale2d','toggleSpikelines','hoverCompareCartesian','hoverClosestCartesian']});"+
+			"Plotly.newPlot(myPlot2, [data[1]], layout2, {displaylogo: false,"+
+			"modeBarButtonsToRemove: ['zoom2d','pan2d','select2d','lasso2d','zoomIn2d','zoomOut2d','autoScale2d','toggleSpikelines','hoverCompareCartesian','hoverClosestCartesian']});"+
+			"Plotly.newPlot(myPlot3, [data[2]], layout3, {displaylogo: false,"+
+			"modeBarButtonsToRemove: ['zoom2d','pan2d','select2d','lasso2d','zoomIn2d','zoomOut2d','autoScale2d','toggleSpikelines','hoverCompareCartesian','hoverClosestCartesian']});"+
+			"myPlot1.on('plotly_legendclick',function() { return false; });"+
+			"myPlot2.on('plotly_legendclick',function() { return false; });"+
+			"myPlot3.on('plotly_legendclick',function() { return false; });"+
 			"</script>"+
 			"</body>";
 		res.send(
@@ -639,21 +943,13 @@ app.get('/charts/pie', function(req, res) {
 		allinfo.isp = ispListSorted;
 		let html = "<head>"+
 			"<style>"+
+			"#pie-chart {"+
+		    "-webkit-filter: grayscale(100%);"+
+		    "filter: grayscale(100%)"+
+		    "}"+
 			"body {  background: #000; }"+
-			" table {  text-align: left;  margin: auto; }"+
-			" table td, table th {  border: 3px solid #9d9d9d;  padding: 5px 2px; }"+
-			" table tbody td, table tbody th {  color: #9D9D9D; }"+
-			" table tr:nth-child(even) {  background: black;  border: 3px solid #9d9d9d; }"+
-			" table tbody tr {  background: #000;  border: 3px solid #5d4343; }"+
-			" table thead tr {  background: #9d9d9d; }"+
-			" table thead th {  font-size: 20px;  font-weight: bold;  color: #000;  text-align: left; }"+
-			" table tfoot {  font-size: 13px;  font-weight: bold;  color: #FFFFFF;  background: #CE3CFF;  background: -moz-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: -webkit-linear-gradient(top, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  background: linear-gradient(to bottom, #da6dff 0%, #d34fff 66%, #CE3CFF 100%);  border-top: 5px solid #792396; }"+
-			" table tfoot td {  font-size: 13px; }"+
-			" table tfoot .links {  text-align: right; }"+
-			" table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; }"+
-			" table tbody tr:hover, table tbody td:hover {  background: #005107; }"+
 			menuCSS+
-			" .menu { position: inherit; }</style>"+
+			" .menu { position: inherit; }"+
 			"</style>"+
 			"<script>"+gotoURL+"</script>"+
 			"<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>"+
@@ -661,10 +957,10 @@ app.get('/charts/pie', function(req, res) {
 			"</head>"+
 			"<body>"+
 			menu+
-			"<div id='version-table'>"+
+			"<div id='pie-chart'>"+
 			"</div>"+
 			"<script>"+
-			"var myPlot = document.getElementById('version-table');"+
+			"var myPlot = document.getElementById('pie-chart');"+
 			"var layout = {"+
 			  "showlegend: true,"+
 			  "legend: {orientation: 'v'},"+
@@ -914,7 +1210,7 @@ app.get('/charts/table', function(req, res) {
 			" table tfoot .links a {  display: inline-block;  background: #792396;  color: #FFFFFF;  padding: 2px 8px;  border-radius: 5px; }"+
 			" table tbody tr:hover, table tbody td:hover {  background: #005107; }"+
 			menuCSS+
-			" .menu { position: inherit; }</style>"+
+			" .menu { position: inherit; }"+
 			"</style>"+
 			"<script>"+gotoURL+"</script>"+
 			"<script src='https://cdn.plot.ly/plotly-latest.min.js'></script>"+

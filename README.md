@@ -20,7 +20,24 @@ currently for ravencoin.
 
 ### 3. Commands / Server Query:
 
-see if it's running: http://localhost:3003/, http://localhost:3003/charts/pie, http://localhost:3003/charts/bar, http://localhost:3003/charts/table, http://localhost:3003/map, http://localhost:3003/node_count, http://localhost:3003/node_list, http://localhost:3003/connections/HOST-IP.csv, http://localhost:3003/api, http://localhost:3003/debug
+http://localhost:3003/
+
+http://localhost:3003/node_count
+
+Charts:
+- http://localhost:3003/map
+- http://localhost:3003/node_list
+- http://localhost:3003/charts/pie
+- http://localhost:3003/charts/bar-v
+- http://localhost:3003/charts/bar-h
+- http://localhost:3003/charts/table
+
+CSV:
+- http://localhost:3003/connections/HOST-IP.csv
+
+APIs:
+- http://localhost:3003/api
+- http://localhost:3003/debug
 
 #### 4.3. Rate limiter:
 (some hosts or VPS providers will balk at you for virus-like activity, which the crawler is.)
