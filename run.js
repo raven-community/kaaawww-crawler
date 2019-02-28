@@ -12,41 +12,15 @@ const BitSet = require('bitset');
 const fs = require('fs');
 const https = require('https');
 const targz = require('targz');
+const geolite2 = require('geolite2');
 let cwd = process.cwd();
-let geoliteFile = cwd+'/GeoLite2-ASN_20190219/GeoLite2-ASN.mmdb';
 
-getdl();//gets geolite2
-async function getdl() {
-	if (!fs.existsSync(geoliteFile)){
-	  const getGeoLite = https.get("https://geolite.maxmind.com/download/geoip/database/GeoLite2-ASN.tar.gz", function(response) {
-		response.pipe(fs.createWriteStream(cwd+"/GeoLite2-ASN.tar.gz"), { end: false });
-		response.on('end', () => {
-		  extractFile(cwd+"/GeoLite2-ASN.tar.gz",cwd);
-		});
-		  });
-	} else {
-		start();
-	}
-}
-
-function extractFile(zip,file){
-	targz.decompress({
-		src: zip,
-		dest: file
-	}, function(err){
-		if(err) {
-			console.log(err);
-		} else {
-			fs.unlinkSync(cwd+"/GeoLite2-ASN.tar.gz");
-			start();
-		}
-	});
-}
+start();
 
 function start(){
 var network_name = "rvn";
 let api_port = 3000;
-const asnLookup = maxmind.openSync(geoliteFile);
+const asnLookup = maxmind.openSync(geolite2.paths.asn);
 const stay_connected_time = 1000*60*5;//how long to wait for addr messages.
 let max_concurrent_connections = 500;
 let max_failed_connections_per_minute = 1000;
